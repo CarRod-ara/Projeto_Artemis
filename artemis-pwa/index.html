@@ -85,24 +85,24 @@
         
         <!-- Header -->
         <header class="gradient-bg text-white p-4 sticky top-0 z-40">
-            <div class="flex justify-between items-center">
-                <div>
-                    <h1 class="text-xl font-bold">Artemis</h1>
-                    <p class="text-sm opacity-80" id="currentDate">Carregando...</p>
-                </div>
-                <div class="flex gap-2">
-                    <button onclick="app.syncData()" class="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition" title="Sincronizar">
-                        🔄
-                    </button>
-                    <button onclick="app.exportData()" class="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition" title="Exportar">
-                        💾
-                    </button>
-                    <button onclick="app.openSettings()" class="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition" title="Configurações">
-                        ⚙️
-                    </button>
-                </div>
-            </div>
-        </header>
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-xl font-bold leading-tight">Artemis</h1>
+            <p class="text-sm opacity-80 leading-tight" id="currentDate">Carregando...</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="app.syncData()" class="flex items-center justify-center w-9 h-9 bg-white/20 rounded-lg hover:bg-white/30 transition" title="Sincronizar">
+                🔄
+            </button>
+            <button onclick="app.exportData()" class="flex items-center justify-center w-9 h-9 bg-white/20 rounded-lg hover:bg-white/30 transition" title="Exportar">
+                💾
+            </button>
+            <button onclick="app.openSettings()" class="flex items-center justify-center w-9 h-9 bg-white/20 rounded-lg hover:bg-white/30 transition" title="Configurações">
+                ⚙️
+            </button>
+        </div>
+    </div>
+</header>
 
         <!-- Main Content Area -->
         <main id="mainContent" class="p-4 space-y-4">
