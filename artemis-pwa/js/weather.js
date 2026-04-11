@@ -10,8 +10,7 @@ class WeatherService {
     }
 
     // Get current weather and forecast
-    // Default: São Paulo, Brazil (you can change this)
-    async getWeather(latitude = -23.5505, longitude = -46.6333) {
+    async getWeather(latitude = -22.9455, longitude = -43.3627) {
         try {
             // Check cache first
             const cached = this.getCachedWeather();

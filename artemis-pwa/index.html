@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#667eea">
-    <meta name="description" content="Sistema Artemis - Gestão de Vendas Doçuras de Artemis">
-    <title>Artemis - Painel de Vendas</title>
+    <meta name="description" content="Sistema Luminar - Gestão de Vendas">
+    <title>Luminar - Painel de Vendas</title>
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
@@ -72,6 +72,79 @@
         .offline .offline-indicator {
             display: flex;
         }
+        header.nav-hidden, 
+        nav.nav-hidden {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+        }
+        
+        header.nav-visible, 
+        nav.nav-visible {
+            display: flex !important;
+            visibility: visible !important;
+            height: auto !important;
+        }
+        
+        /* Navigation fixed positioning - CRÍTICO */
+        nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            width: 100%;
+            max-width: 100%;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            z-index: 40;
+            padding: 0;
+            margin: 0;
+        }
+        
+        nav > div {
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 8px 0;
+            gap: 0;
+        }
+        
+        /* Nav buttons - garantir espaçamento consistente */
+        .nav-btn {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 4px;
+            transition: all 0.2s ease;
+            min-height: 60px;
+        }
+        
+        .nav-btn span:first-child {
+            font-size: 24px;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+        
+        .nav-btn span:last-child {
+            font-size: 11px;
+            font-weight: 500;
+            text-align: center;
+        }
+        
+        /* Header visibility */
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+        }
+        
+        /* Main content - garantir padding para nav fixa */
+        #mainContent {
+            padding-bottom: 80px;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -81,13 +154,13 @@
     </div>
 
     <!-- App Container -->
-    <div id="app" class="max-w-md mx-auto bg-gray-50 min-h-screen pb-20">
+    <div id="app" class="max-w-md mx-auto bg-gray-50 min-h-screen">
         
         <!-- Header -->
         <header class="gradient-bg text-white p-4 sticky top-0 z-40">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-xl font-bold leading-tight">Artemis</h1>
+            <h1 class="text-xl font-bold leading-tight">Luminar</h1>
             <p class="text-sm opacity-80 leading-tight" id="currentDate">Carregando...</p>
         </div>
         <div class="flex items-center gap-2">
@@ -144,12 +217,11 @@
 
     <!-- Scripts -->
     <script src="js/utils.js"></script>
-    <!-- Scripts - ORDEM CORRETA -->
-<script src="js/db.js"></script>
-<script src="js/weather.js"></script>
-<script src="js/mixEngine.js"></script>
-<script src="js/health-check.js"></script>  <!-- DEPOIS do db.js -->
-<script src="js/app.js"></script>
+    <script src="js/db.js"></script>
+    <script src="js/weather.js"></script>
+    <script src="js/mixEngine.js"></script>
+    <script src="js/health-check.js"></script>
+    <script src="js/app.js"></script>
 
 <script>
 // Register Service Worker

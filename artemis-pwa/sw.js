@@ -1,5 +1,5 @@
-// Artemis PWA - Service Worker (Versão Estável)
-const CACHE_NAME = 'artemis-v4';
+// Luminar PWA - Service Worker (Versão Estável)
+const CACHE_NAME = 'luminar-v1';
 const CACHE_LIMIT = 50; // ← Definido
 
 const STATIC_ASSETS = [

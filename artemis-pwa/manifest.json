@@ -1,8 +1,8 @@
 {
-  "id": "artemis-pwa-v1",
-  "name": "Artemis - Gestão de Vendas",
-  "short_name": "Artemis",
-  "description": "Sistema de gestão para Doçuras de Artemis - controle de vendas, fiados e sugestão de mix",
+  "id": "luminar-pwa-v1",
+  "name": "Luminar - Gestão de Vendas",
+  "short_name": "Luminar",
+  "description": "Sistema de gestão para vendedores de rua - controle de vendas, fiados e sugestão de mix",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

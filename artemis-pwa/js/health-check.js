@@ -1,4 +1,4 @@
-// Health Check - Artemis PWA
+// Health Check - Luminar PWA
 // Executa apenas APÓS o app estar inicializado
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -17,7 +17,7 @@ async function runHealthCheck() {
         https: checkHTTPS()
     };
     
-    console.group('🏥 Artemis Health Check');
+    console.group('🏥 Luminar Health Check');
     for (const [key, value] of Object.entries(results)) {
         console.log(`${value.ok ? '✅' : '❌'} ${key}: ${value.message}`);
     }

@@ -1,9 +1,9 @@
-// IndexedDB Database Manager for Artemis
+// IndexedDB Database Manager for Luminar
 // Zero external dependencies, works offline
 
-class ArtemisDB {
+class LuminarDB {
     constructor() {
-        this.dbName = 'ArtemisDB';
+        this.dbName = 'LuminarDB';
         this.dbVersion = 2;
         this.db = null;
     }
@@ -358,4 +358,4 @@ async getAllUsers() {
 }
 
 // Create global instance
-const db = new ArtemisDB();
+const db = new LuminarDB();

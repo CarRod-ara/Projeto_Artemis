@@ -1,4 +1,4 @@
-# 🍰 Artemis PWA - Sistema de Gestão para Doçuras de Artemis
+# 🍰 Luminar PWA - Sistema de Gestão para Doçuras de Artemis
 
 Sistema completo de gestão de vendas para microempreendedores, com sugestão inteligente de mix de produtos, controle de fiados e análise de eficiência. Funciona 100% offline como PWA (Progressive Web App).
 
