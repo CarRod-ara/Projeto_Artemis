@@ -1,5 +1,5 @@
 // Luminar PWA - Service Worker (Versão Estável)
-const CACHE_NAME = 'luminar-v1';
+const CACHE_NAME = 'luminar-v2';
 const CACHE_LIMIT = 50; // ← Definido
 
 const STATIC_ASSETS = [
@@ -159,4 +159,17 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     event.waitUntil(clients.openWindow('/'));
+});
+
+// ========== ATUALIZAÇÃO AUTOMÁTICA ==========
+// Quando uma nova versão do SW é encontrada e instalada, avisa o cliente
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+});
+
+// Quando uma nova versão assume o controle, avisa todos os clientes para recarregar
+self.addEventListener('controllerchange', () => {
+    // Isso será ouvido pelo cliente
 });

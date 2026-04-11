@@ -157,6 +157,23 @@ class WeatherService {
         }
     }
 
+    async buscarCoordenadas(cidade) {
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cidade)}&format=json&limit=1`;
+        const response = await fetch(url);
+        const data = await response.json();
+        if (data && data.length > 0) {
+            return {
+                lat: parseFloat(data[0].lat),
+                lon: parseFloat(data[0].lon)
+            };
+        }
+    } catch (e) {
+        console.error("Erro ao buscar coordenadas:", e);
+    }
+    return null;
+}
+
     // Get weather impact on sales (for mix suggestion)
     getWeatherImpact(weather) {
         const condition = weather.current.condition.category;

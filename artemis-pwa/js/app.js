@@ -68,6 +68,35 @@ class LuminarApp {
       // Se não logado, mostra tela de login
       this.showLoginScreen();
       this.setupConnectivityListeners();
+      // Listener para atualização do Service Worker
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          console.log("🔄 Nova versão detectada! Recarregando...");
+          window.location.reload();
+        });
+
+        // Verifica se há uma atualização pendente
+        navigator.serviceWorker.ready.then((registration) => {
+          registration.addEventListener("updatefound", () => {
+            const newWorker = registration.installing;
+            newWorker.addEventListener("statechange", () => {
+              if (
+                newWorker.state === "installed" &&
+                navigator.serviceWorker.controller
+              ) {
+                // Nova versão instalada e pronta. Pergunta se quer atualizar agora?
+                if (
+                  confirm(
+                    "Uma nova versão do Luminar está disponível! Deseja atualizar agora?",
+                  )
+                ) {
+                  newWorker.postMessage({ type: "SKIP_WAITING" });
+                }
+              }
+            });
+          });
+        });
+      }
     } catch (error) {
       console.error("❌ Initialization error:", error);
       this.showToast(
@@ -233,6 +262,28 @@ class LuminarApp {
       survival: 110,
       comfortable: 150,
       ideal: 260,
+      semanal: 750,
+      mensal: 3000,
+    };
+    this.climaConfig = (await db.getConfig(
+      this.currentUserId,
+      "climaConfig",
+    )) || {
+      cidade: "Rio de Janeiro",
+      lat: -22.9455,
+      lon: -43.3627,
+    };
+    // Em loadUserData, após carregar climaConfig:
+    this.weatherData = await weather.getWeather(
+      this.climaConfig?.lat || -22.9455,
+      this.climaConfig?.lon || -43.3627,
+    );
+    this.indicadores = (await db.getConfig(
+      this.currentUserId,
+      "indicadores",
+    )) || {
+      usarClima: true,
+      usarDiaSemana: true,
     };
     this.produtos = (await db.getConfig(this.currentUserId, "produtos")) || [];
     this.regrasMix =
@@ -248,7 +299,6 @@ class LuminarApp {
     }
 
     this.updateDateDisplay();
-    this.weatherData = await weather.getWeather();
     this.navigate("dashboard");
   }
 
@@ -625,13 +675,13 @@ class LuminarApp {
 
   renderItensForm(sugestaoMix, itensExistentes) {
     const categorias = {
-      bolos: { nome: "🎂 Bolos", produtos: [] },
-      brownies: { nome: "🍫 Brownies", produtos: [] },
-      brigadeiros: { nome: "🍬 Brigadeiros", produtos: [] },
-      mousses: { nome: "🧁 Mousses", produtos: [] },
-      copos: { nome: "🍧 Copos", produtos: [] },
-      sacoles: { nome: "🍨 Sacolés", produtos: [] },
-      bebidas: { nome: "🥤 Bebidas", produtos: [] },
+      bolos: { nome: "🎂 Bolos", produtos: [], emoji: "🎂" },
+      brownies: { nome: "🍫 Brownies", produtos: [], emoji: "🍫" },
+      brigadeiros: { nome: "🍬 Brigadeiros", produtos: [], emoji: "🍬" },
+      mousses: { nome: "🧁 Mousses", produtos: [], emoji: "🧁" },
+      copos: { nome: "🍧 Copos", produtos: [], emoji: "🍧" },
+      sacoles: { nome: "🍨 Sacolés", produtos: [], emoji: "🍨" },
+      bebidas: { nome: "🥤 Bebidas", produtos: [], emoji: "🥤" },
     };
 
     for (const produto of this.produtos || []) {
@@ -643,7 +693,7 @@ class LuminarApp {
         categorias[produto.categoria].produtos.push({
           ...produto,
           sugestao,
-          levado: existente?.levado || 0,
+          levado: existente?.levado || sugestao || 0, // Pré-preenche com sugestão se não houver existente
           vendido: existente?.vendido || 0,
         });
       }
@@ -652,19 +702,30 @@ class LuminarApp {
     let html = "";
     for (const [catKey, categoria] of Object.entries(categorias)) {
       if (categoria.produtos.length === 0) continue;
-      html += `<div class="bg-gray-50 rounded-lg p-3 mb-3"><h4 class="font-medium text-gray-700 mb-2">${categoria.nome}</h4><div class="grid grid-cols-2 gap-2">`;
+      // Usa <details> para accordion nativo – aberto por padrão se houver sugestão > 0 ou itens já preenchidos
+      const temSugestaoOuPreenchido = categoria.produtos.some(
+        (p) => p.sugestao > 0 || p.levado > 0,
+      );
+      const openAttr = temSugestaoOuPreenchido ? "open" : "";
+
+      html += `<details class="bg-gray-50 rounded-lg p-3 mb-3" ${openAttr}>
+            <summary class="font-medium text-gray-700 cursor-pointer list-none flex items-center">
+                <span class="mr-2">${openAttr ? "▼" : "▶"}</span> ${categoria.nome} (${categoria.produtos.length} itens)
+            </summary>
+            <div class="grid grid-cols-2 gap-2 mt-3">`;
+
       for (const prod of categoria.produtos) {
         html += `
-                    <div class="bg-white rounded-lg p-2 border border-gray-200">
-                        <div class="text-xs text-gray-600 mb-1">${this.escapeHtml(prod.nome)} (${prod.codigo})</div>
-                        <div class="flex gap-2">
-                            <input type="number" min="0" name="levado_${prod.id}" value="${prod.levado || ""}" placeholder="Lev" class="w-1/2 px-2 py-1 text-sm border border-gray-300 rounded">
-                            <input type="number" min="0" name="vendido_${prod.id}" value="${prod.vendido || ""}" placeholder="Vend" class="w-1/2 px-2 py-1 text-sm border border-gray-300 rounded">
-                        </div>
-                        ${prod.sugestao > 0 ? `<div class="text-xs text-purple-600 mt-1">Sugestão: ${prod.sugestao}</div>` : ""}
-                    </div>`;
+                <div class="bg-white rounded-lg p-2 border border-gray-200">
+                    <div class="text-xs text-gray-600 mb-1">${this.escapeHtml(prod.nome)} (${prod.codigo})</div>
+                    <div class="flex gap-2">
+                        <input type="number" min="0" name="levado_${prod.id}" value="${prod.levado || ""}" placeholder="Lev" class="w-1/2 px-2 py-1 text-sm border border-gray-300 rounded">
+                        <input type="number" min="0" name="vendido_${prod.id}" value="${prod.vendido || ""}" placeholder="Vend" class="w-1/2 px-2 py-1 text-sm border border-gray-300 rounded">
+                    </div>
+                    ${prod.sugestao > 0 ? `<div class="text-xs text-purple-600 mt-1">Sugestão: ${prod.sugestao}</div>` : ""}
+                </div>`;
       }
-      html += `</div></div>`;
+      html += `</div></details>`;
     }
     return html;
   }
@@ -959,9 +1020,62 @@ class LuminarApp {
         break;
       case "settings":
         content.innerHTML = this.renderSettingsModal();
+        // Listeners das abas
+        content.querySelectorAll(".tab-settings").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            const tab = e.currentTarget.dataset.tab;
+            content.querySelectorAll(".tab-settings").forEach((b) => {
+              b.classList.remove(
+                "text-purple-600",
+                "border-b-2",
+                "border-purple-600",
+              );
+              b.classList.add("text-gray-500");
+            });
+            e.currentTarget.classList.add(
+              "text-purple-600",
+              "border-b-2",
+              "border-purple-600",
+            );
+            e.currentTarget.classList.remove("text-gray-500");
+
+            content
+              .querySelectorAll(".tab-content")
+              .forEach((c) => c.classList.add("hidden"));
+            content
+              .querySelector(
+                `#tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`,
+              )
+              .classList.remove("hidden");
+          });
+        });
+        // Listener salvar metas
         document
           .getElementById("btnSaveSettings")
           ?.addEventListener("click", () => this.salvarConfiguracoes());
+
+        // Listener salvar clima
+        document
+          .getElementById("btnSaveClima")
+          ?.addEventListener("click", () => this.salvarConfigClima());
+        // Listeners CRUD de produtos
+        document
+          .getElementById("btnAddProduto")
+          ?.addEventListener("click", () => this.abrirModalProduto());
+        document.querySelectorAll(".btn-edit-produto").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            const id = e.currentTarget.dataset.produtoId;
+            const produto = this.produtos.find((p) => p.id === id);
+            if (produto) this.abrirModalProduto(produto);
+          });
+        });
+        document.querySelectorAll(".btn-delete-produto").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            const id = e.currentTarget.dataset.produtoId;
+            this.excluirProduto(id);
+          });
+        });
+        // Listener logout
         document
           .getElementById("btnLogout")
           ?.addEventListener("click", () => this.logout());
@@ -1037,25 +1151,101 @@ class LuminarApp {
   }
 
   renderSettingsModal() {
-    const metas = this.metas || { survival: 110, comfortable: 150, ideal: 260 };
+    const metas = this.metas || {
+      survival: 110,
+      comfortable: 150,
+      ideal: 260,
+      semanal: 750,
+      mensal: 3000,
+    };
+    // Carrega configurações de clima e indicadores (se existirem)
+    const climaConfig = this.climaConfig || {
+      cidade: "Rio de Janeiro",
+      lat: -22.9455,
+      lon: -43.3627,
+    };
+    const indicadores = this.indicadores || {
+      usarClima: true,
+      usarDiaSemana: true,
+    };
+
     return `
         <div class="p-5">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-gray-800">⚙️ Configurações</h3>
                 <button id="btnCloseModal" class="text-gray-500 text-2xl">&times;</button>
             </div>
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-600 mb-2">Metas Diárias</label>
-                    <div class="grid grid-cols-3 gap-2">
-                        <div><label class="text-xs text-yellow-600">Sobrevivência</label><input type="number" id="metaSurvival" value="${metas.survival}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
-                        <div><label class="text-xs text-orange-600">Confortável</label><input type="number" id="metaComfortable" value="${metas.comfortable}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
-                        <div><label class="text-xs text-green-600">Ideal</label><input type="number" id="metaIdeal" value="${metas.ideal}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
+            
+            <!-- Abas -->
+            <div class="flex border-b border-gray-200 mb-4">
+                <button class="tab-settings active flex-1 py-2 text-center font-medium text-purple-600 border-b-2 border-purple-600" data-tab="metas">Metas</button>
+                <button class="tab-settings flex-1 py-2 text-center font-medium text-gray-500" data-tab="cardapio">Cardápio</button>
+                <button class="tab-settings flex-1 py-2 text-center font-medium text-gray-500" data-tab="clima">Clima</button>
+                <button class="tab-settings flex-1 py-2 text-center font-medium text-gray-500" data-tab="perfil">Perfil</button>
+            </div>
+            
+            <!-- Conteúdo da Aba Metas -->
+            <div id="tabMetas" class="tab-content">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-2">Metas Diárias</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div><label class="text-xs text-yellow-600">Sobrevivência</label><input type="number" id="metaSurvival" value="${metas.survival}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
+                            <div><label class="text-xs text-orange-600">Confortável</label><input type="number" id="metaComfortable" value="${metas.comfortable}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
+                            <div><label class="text-xs text-green-600">Ideal</label><input type="number" id="metaIdeal" value="${metas.ideal}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-2">Meta Semanal</label>
+                        <input type="number" id="metaSemanal" value="${metas.semanal || 750}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-2">Meta Mensal</label>
+                        <input type="number" id="metaMensal" value="${metas.mensal || 3000}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <button id="btnSaveSettings" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Salvar Metas</button>
+                </div>
+            </div>
+            
+            <!-- Conteúdo da Aba Cardápio -->
+            <div id="tabCardapio" class="tab-content hidden">
+                <div class="space-y-3">
+                    <button id="btnAddProduto" class="w-full py-2 bg-green-100 text-green-700 rounded-lg font-medium text-sm">➕ Adicionar Produto</button>
+                    <div id="listaProdutosSettings" class="max-h-80 overflow-y-auto space-y-2">
+                        ${this.renderListaProdutosSettings()}
                     </div>
                 </div>
-                <button id="btnSaveSettings" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Salvar Configurações</button>
-                <button id="btnLogout" class="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-semibold mt-2">🚪 Sair da conta</button>
             </div>
+            
+            <!-- Conteúdo da Aba Clima & Indicadores -->
+            <div id="tabClima" class="tab-content hidden">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">Cidade para previsão do tempo</label>
+                        <input type="text" id="cidadeClima" value="${this.escapeHtml(climaConfig.cidade || "")}" placeholder="Ex: Freguesia, Rio de Janeiro" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                        <p class="text-xs text-gray-500 mt-1">Usado para sugerir o mix de produtos.</p>
+                    </div>
+                    <div class="border-t pt-4">
+                        <label class="block text-sm font-medium text-gray-600 mb-2">Indicadores de Impacto</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" id="indClima" ${indicadores.usarClima ? "checked" : ""} class="mr-2"> Considerar clima na sugestão de mix
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" id="indDiaSemana" ${indicadores.usarDiaSemana ? "checked" : ""} class="mr-2"> Considerar dia da semana
+                            </label>
+                        </div>
+                    </div>
+                    <button id="btnSaveClima" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Salvar Configurações de Clima</button>
+                </div>
+            </div>
+            
+            <!-- Conteúdo da Aba Perfil (placeholder) -->
+            <div id="tabPerfil" class="tab-content hidden">
+                <p class="text-gray-500 text-center py-4">Em breve: editar nome da loja e vendedor.</p>
+            </div>
+            
+            <button id="btnLogout" class="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-semibold mt-4">🚪 Sair da conta</button>
         </div>
     `;
   }
@@ -1066,10 +1256,12 @@ class LuminarApp {
       comfortable:
         parseInt(document.getElementById("metaComfortable")?.value) || 150,
       ideal: parseInt(document.getElementById("metaIdeal")?.value) || 260,
+      semanal: parseInt(document.getElementById("metaSemanal")?.value) || 750,
+      mensal: parseInt(document.getElementById("metaMensal")?.value) || 3000,
     };
     await db.setConfig(this.currentUserId, "metas", this.metas);
     this.closeModal();
-    this.showToast("Configurações salvas!", "success");
+    this.showToast("Metas salvas!", "success");
     if (this.currentPage === "dashboard")
       this.renderDashboard(document.getElementById("mainContent"));
   }
@@ -1096,86 +1288,105 @@ class LuminarApp {
     let jsonData = null;
 
     if (textArea && textArea.value.trim() !== "") {
-        try {
-            jsonData = JSON.parse(textArea.value.trim());
-        } catch (e) {
-            this.showToast("JSON inválido na área de texto. Verifique a formatação.", "error");
-            return;
-        }
+      try {
+        jsonData = JSON.parse(textArea.value.trim());
+      } catch (e) {
+        this.showToast(
+          "JSON inválido na área de texto. Verifique a formatação.",
+          "error",
+        );
+        return;
+      }
     } else {
-        // 2. Se não colou nada, tenta ler o ARQUIVO selecionado
-        const fileInput = document.getElementById("importFile");
-        const file = fileInput?.files?.[0];
-        if (!file) {
-            this.showToast("Selecione um arquivo JSON ou cole o conteúdo na caixa de texto.", "error");
-            return;
-        }
-        try {
-            const text = await file.text();
-            jsonData = JSON.parse(text);
-        } catch (e) {
-            this.showToast("Arquivo JSON inválido ou corrompido.", "error");
-            return;
-        }
+      // 2. Se não colou nada, tenta ler o ARQUIVO selecionado
+      const fileInput = document.getElementById("importFile");
+      const file = fileInput?.files?.[0];
+      if (!file) {
+        this.showToast(
+          "Selecione um arquivo JSON ou cole o conteúdo na caixa de texto.",
+          "error",
+        );
+        return;
+      }
+      try {
+        const text = await file.text();
+        jsonData = JSON.parse(text);
+      } catch (e) {
+        this.showToast("Arquivo JSON inválido ou corrompido.", "error");
+        return;
+      }
     }
 
     // 3. Processa os dados
     try {
-        // Caso 1: Registro único (formato do prompt de IA)
-        if (jsonData.data && jsonData.fluxo) {
-            // 🔥 CORREÇÃO: Adiciona o campo 'id' obrigatório
-            if (!jsonData.id) {
-                jsonData.id = jsonData.data;
-            }
-            
-            const registroExistente = await db.getRegistro(jsonData.id, this.currentUserId);
-            if (registroExistente) {
-                if (!confirm(`Registro do dia ${jsonData.data} já existe. Deseja sobrescrever?`)) {
-                    this.showToast("Importação cancelada.", "info");
-                    this.closeModal();
-                    return;
-                }
-            }
-            await db.saveRegistro(jsonData, this.currentUserId);
-            this.showToast(`Registro de ${jsonData.data} importado com sucesso!`, "success");
-        }
-        // Caso 2: Backup completo (contém arrays "registros" ou "fiados")
-        else if (jsonData.registros || jsonData.fiados) {
-            if (jsonData.registros) {
-                for (const r of jsonData.registros) {
-                    // Garante que cada registro tenha id (fallback para data)
-                    if (!r.id && r.data) r.id = r.data;
-                    await db.saveRegistro(r, this.currentUserId);
-                }
-            }
-            if (jsonData.fiados) {
-                for (const f of jsonData.fiados) {
-                    await db.saveFiado(f, this.currentUserId);
-                }
-            }
-            if (jsonData.config) {
-                for (const [k, v] of Object.entries(jsonData.config)) {
-                    await db.setConfig(this.currentUserId, k, v);
-                }
-            }
-            this.showToast("Backup completo importado!", "success");
-        } else {
-            this.showToast('Formato de arquivo não reconhecido. O JSON deve conter "data" e "fluxo" ou "registros"/"fiados".', "error");
-            return;
+      // Caso 1: Registro único (formato do prompt de IA)
+      if (jsonData.data && jsonData.fluxo) {
+        // 🔥 CORREÇÃO: Adiciona o campo 'id' obrigatório
+        if (!jsonData.id) {
+          jsonData.id = jsonData.data;
         }
 
-        // 4. Fecha o modal e recarrega a página atual
-        this.closeModal();
-        if (this.currentPage === "dashboard") {
-            this.renderDashboard(document.getElementById("mainContent"));
-        } else {
-            this.navigate(this.currentPage);
+        const registroExistente = await db.getRegistro(
+          jsonData.id,
+          this.currentUserId,
+        );
+        if (registroExistente) {
+          if (
+            !confirm(
+              `Registro do dia ${jsonData.data} já existe. Deseja sobrescrever?`,
+            )
+          ) {
+            this.showToast("Importação cancelada.", "info");
+            this.closeModal();
+            return;
+          }
         }
+        await db.saveRegistro(jsonData, this.currentUserId);
+        this.showToast(
+          `Registro de ${jsonData.data} importado com sucesso!`,
+          "success",
+        );
+      }
+      // Caso 2: Backup completo (contém arrays "registros" ou "fiados")
+      else if (jsonData.registros || jsonData.fiados) {
+        if (jsonData.registros) {
+          for (const r of jsonData.registros) {
+            // Garante que cada registro tenha id (fallback para data)
+            if (!r.id && r.data) r.id = r.data;
+            await db.saveRegistro(r, this.currentUserId);
+          }
+        }
+        if (jsonData.fiados) {
+          for (const f of jsonData.fiados) {
+            await db.saveFiado(f, this.currentUserId);
+          }
+        }
+        if (jsonData.config) {
+          for (const [k, v] of Object.entries(jsonData.config)) {
+            await db.setConfig(this.currentUserId, k, v);
+          }
+        }
+        this.showToast("Backup completo importado!", "success");
+      } else {
+        this.showToast(
+          'Formato de arquivo não reconhecido. O JSON deve conter "data" e "fluxo" ou "registros"/"fiados".',
+          "error",
+        );
+        return;
+      }
+
+      // 4. Fecha o modal e recarrega a página atual
+      this.closeModal();
+      if (this.currentPage === "dashboard") {
+        this.renderDashboard(document.getElementById("mainContent"));
+      } else {
+        this.navigate(this.currentPage);
+      }
     } catch (e) {
-        console.error("Erro durante a importação:", e);
-        this.showToast("Erro ao processar os dados. Tente novamente.", "error");
+      console.error("Erro durante a importação:", e);
+      this.showToast("Erro ao processar os dados. Tente novamente.", "error");
     }
-}
+  }
 
   // === EXPORT/UTILITIES ===
 
@@ -1304,8 +1515,238 @@ class LuminarApp {
   openSettings() {
     this.openModal("settings");
   }
+
+  async salvarConfigClima() {
+    const cidade = document.getElementById("cidadeClima").value.trim();
+    const usarClima = document.getElementById("indClima").checked;
+    const usarDiaSemana = document.getElementById("indDiaSemana").checked;
+
+    // Se a cidade mudou, busca coordenadas via Nominatim
+    let lat = this.climaConfig?.lat;
+    let lon = this.climaConfig?.lon;
+    if (cidade && cidade !== this.climaConfig?.cidade) {
+      try {
+        const coords = await weather.buscarCoordenadas(cidade);
+        if (coords) {
+          lat = coords.lat;
+          lon = coords.lon;
+        }
+      } catch (e) {
+        console.warn(
+          "Não foi possível obter coordenadas, mantendo anteriores.",
+        );
+      }
+    }
+
+    this.climaConfig = { cidade, lat, lon };
+    this.indicadores = { usarClima, usarDiaSemana };
+
+    await db.setConfig(this.currentUserId, "climaConfig", this.climaConfig);
+    await db.setConfig(this.currentUserId, "indicadores", this.indicadores);
+
+    // Atualiza o weatherData com a nova localização
+    if (lat && lon) {
+      this.weatherData = await weather.getWeather(lat, lon);
+    }
+
+    this.closeModal();
+    this.showToast("Configurações de clima salvas!", "success");
+    if (this.currentPage === "dashboard")
+      this.renderDashboard(document.getElementById("mainContent"));
+  }
+
   async syncData() {
     this.showToast("Dados sincronizados localmente", "success");
+  }
+
+  // === CRUD DE PRODUTOS (Modal Configurações) ===
+
+  renderListaProdutosSettings() {
+    if (!this.produtos || this.produtos.length === 0) {
+      return '<p class="text-gray-500 text-center py-2">Nenhum produto cadastrado.</p>';
+    }
+    return this.produtos
+      .map((prod) => {
+        // Busca o nome da unidade base, se diferente do próprio produto
+        let infoExtra = "";
+        if (prod.unidade_base_id && prod.unidade_base_id !== prod.id) {
+          const base = this.produtos.find((p) => p.id === prod.unidade_base_id);
+          if (base) {
+            infoExtra = `<div class="text-xs text-purple-600 mt-1">⚡ 1 un = ${prod.fator_conversao || 1} x ${this.escapeHtml(base.nome)}</div>`;
+          }
+        }
+        return `
+            <div class="flex items-center justify-between bg-gray-50 p-2 rounded-lg">
+                <div class="flex-1">
+                    <div class="font-medium text-sm">${this.escapeHtml(prod.nome)}</div>
+                    <div class="text-xs text-gray-500">${prod.codigo} • R$ ${prod.preco.toFixed(2)} • ${prod.categoria}</div>
+                    ${infoExtra}
+                </div>
+                <div class="flex gap-1">
+                    <button data-produto-id="${prod.id}" class="btn-edit-produto text-blue-600 p-1">✏️</button>
+                    <button data-produto-id="${prod.id}" class="btn-delete-produto text-red-600 p-1">🗑️</button>
+                </div>
+            </div>
+        `;
+      })
+      .join("");
+  }
+
+  abrirModalProduto(produto = null) {
+    const modal = document.getElementById("modal");
+    const content = document.getElementById("modalContent");
+    if (!modal || !content) return;
+
+    const categorias = [
+      "bolos",
+      "brownies",
+      "brigadeiros",
+      "mousses",
+      "copos",
+      "sacoles",
+      "bebidas",
+    ];
+    const isEdit = produto !== null;
+
+    // Lista de produtos disponíveis para selecionar como "Unidade Base"
+    const opcoesUnidadeBase = this.produtos
+      .filter((p) => p.id !== (produto?.id || null)) // evita referência circular
+      .map(
+        (p) =>
+          `<option value="${p.id}" ${isEdit && produto.unidade_base_id === p.id ? "selected" : ""}>${this.escapeHtml(p.nome)} (${p.codigo})</option>`,
+      )
+      .join("");
+
+    content.innerHTML = `
+        <div class="p-5">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-gray-800">${isEdit ? "Editar" : "Novo"} Produto</h3>
+                <button id="btnCloseModal" class="text-gray-500 text-2xl">&times;</button>
+            </div>
+            <form id="formProduto">
+                <input type="hidden" id="produtoId" value="${isEdit ? produto.id : ""}">
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Nome</label>
+                    <input type="text" id="produtoNome" value="${isEdit ? this.escapeHtml(produto.nome) : ""}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">Código</label>
+                        <input type="text" id="produtoCodigo" value="${isEdit ? produto.codigo : ""}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">Preço (R$)</label>
+                        <input type="number" step="0.01" id="produtoPreco" value="${isEdit ? produto.preco : ""}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Categoria</label>
+                    <select id="produtoCategoria" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                        ${categorias.map((cat) => `<option value="${cat}" ${isEdit && produto.categoria === cat ? "selected" : ""}>${cat}</option>`).join("")}
+                    </select>
+                </div>
+
+                <!-- 🔥 Novos campos: Unidade Base e Fator de Conversão -->
+                <div class="border-t border-gray-200 pt-4 mt-2">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-700">⚙️ Configuração Avançada</span>
+                        <button type="button" id="btnHelpAvancado" class="text-gray-400 hover:text-gray-600 text-lg" title="O que é isso?">❓</button>
+                    </div>
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-gray-600 mb-1">Unidade Base (referência de produção)</label>
+                        <select id="produtoUnidadeBase" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                            <option value="" ${!isEdit || !produto.unidade_base_id ? "selected" : ""}>-- Nenhuma (produto independente) --</option>
+                            ${opcoesUnidadeBase}
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Ex: para "Caixa de Brigadeiro", selecione "Brigadeiro Avulso".</p>
+                    </div>
+                    <div class="mb-3">
+                        <label class="block text-sm font-medium text-gray-600 mb-1">Fator de Conversão</label>
+                        <input type="number" min="1" step="1" id="produtoFatorConversao" value="${isEdit && produto.fator_conversao ? produto.fator_conversao : 1}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                        <p class="text-xs text-gray-500 mt-1">Quantas unidades base formam 1 unidade deste produto? (Ex: 1 Caixa = 4 Avulsos → fator 4)</p>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full btn-primary text-white py-3 rounded-xl font-semibold mt-4">
+                    ${isEdit ? "Salvar Alterações" : "Adicionar Produto"}
+                </button>
+            </form>
+        </div>
+    `;
+
+    // Listener para o botão de ajuda
+    document
+      .getElementById("btnHelpAvancado")
+      ?.addEventListener("click", () => {
+        alert(
+          "🔍 Unidade Base e Fator de Conversão:\n\n" +
+            "Use isto para produtos que são vendidos em embalagens diferentes da unidade de produção.\n\n" +
+            "Exemplo: Você produz 'Brigadeiro Avulso' (unidade base), mas vende 'Caixa com 4'.\n" +
+            "- Unidade Base: 'Brigadeiro Avulso'\n" +
+            "- Fator de Conversão: 4\n\n" +
+            "O sistema usará essas informações para sugerir quantas caixas levar com base na eficiência do avulso.",
+        );
+      });
+
+    document
+      .getElementById("formProduto")
+      .addEventListener("submit", (e) => this.salvarProduto(e));
+    document
+      .getElementById("btnCloseModal")
+      .addEventListener("click", () => this.closeModal());
+  }
+
+  async salvarProduto(event) {
+    event.preventDefault();
+    const id = document.getElementById("produtoId").value;
+    const nome = document.getElementById("produtoNome").value.trim();
+    const codigo = document.getElementById("produtoCodigo").value.trim();
+    const preco = parseFloat(document.getElementById("produtoPreco").value);
+    const categoria = document.getElementById("produtoCategoria").value;
+    const unidadeBaseId = document.getElementById("produtoUnidadeBase").value;
+    const fatorConversao =
+      parseInt(document.getElementById("produtoFatorConversao").value) || 1;
+
+    if (!nome || !codigo || isNaN(preco) || preco <= 0) {
+      this.showToast(
+        "Preencha todos os campos obrigatórios corretamente.",
+        "error",
+      );
+      return;
+    }
+
+    const produto = {
+      id: id || `prod_${Date.now()}`,
+      categoria,
+      nome,
+      codigo,
+      preco,
+      unidade_base_id: unidadeBaseId || id, // se vazio, assume o próprio id
+      fator_conversao: fatorConversao,
+    };
+
+    if (id) {
+      const index = this.produtos.findIndex((p) => p.id === id);
+      if (index !== -1) this.produtos[index] = produto;
+    } else {
+      this.produtos.push(produto);
+    }
+
+    await db.setConfig(this.currentUserId, "produtos", this.produtos);
+    this.closeModal();
+    this.showToast("Produto salvo!", "success");
+    if (this.currentPage === "dashboard" || this.currentPage === "registrar") {
+      this.openModal("settings");
+    }
+  }
+
+  async excluirProduto(produtoId) {
+    if (!confirm("Tem certeza que deseja excluir este produto?")) return;
+    this.produtos = this.produtos.filter((p) => p.id !== produtoId);
+    await db.setConfig(this.currentUserId, "produtos", this.produtos);
+    this.showToast("Produto removido.", "info");
+    // Recarrega a lista no modal de configurações
+    this.openModal("settings");
   }
 
   logout() {
