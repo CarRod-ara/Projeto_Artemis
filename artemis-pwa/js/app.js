@@ -389,7 +389,9 @@ class LuminarApp {
     });
 
     const metas = this.metas || { survival: 110, comfortable: 150, ideal: 260 };
-    const valorDia = registroHoje?.fluxo?.pagosDia || 0;
+    const valorDia =
+      (registroHoje?.fluxo?.pagosDia || 0) +
+      (registroHoje?.fluxo?.recebidosFiados || 0);
     const progressPct =
       metas.ideal > 0 ? Math.min(100, (valorDia / metas.ideal) * 100) : 0;
 
@@ -588,8 +590,11 @@ class LuminarApp {
       const dataStr = data.toISOString().split("T")[0];
       const diaLabel = data.toLocaleDateString("pt-BR", { weekday: "short" });
       const registro = registros?.find((r) => r.id === dataStr);
-      dias.push(diaLabel);
-      valores.push(registro?.fluxo?.pagosDia || 0);
+      const totalDia =
+        (registro?.fluxo?.pagosDia || 0) +
+        (registro?.fluxo?.recebidosFiados || 0);
+        dias.push(diaLabel);
+      valores.push(totalDia);
     }
 
     if (this.chartInstances.weekly) this.chartInstances.weekly.destroy();
@@ -1762,7 +1767,13 @@ class LuminarApp {
     inicio.setHours(0, 0, 0, 0);
     return (registros || [])
       .filter((r) => new Date(r.data) >= inicio)
-      .reduce((sum, r) => sum + this.safeNumber(r.fluxo?.pagosDia), 0);
+      .reduce(
+        (sum, r) =>
+          sum +
+          this.safeNumber(r.fluxo?.pagosDia) +
+          this.safeNumber(r.fluxo?.recebidosFiados),
+        0,
+      );
   }
 
   calcularVendasMes(registros) {
@@ -1770,7 +1781,13 @@ class LuminarApp {
     const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
     return (registros || [])
       .filter((r) => new Date(r.data) >= inicio)
-      .reduce((sum, r) => sum + this.safeNumber(r.fluxo?.pagosDia), 0);
+      .reduce(
+        (sum, r) =>
+          sum +
+          this.safeNumber(r.fluxo?.pagosDia) +
+          this.safeNumber(r.fluxo?.recebidosFiados),
+        0,
+      );
   }
 
   showToast(message, type = "info") {

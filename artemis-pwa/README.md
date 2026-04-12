@@ -1,152 +1,168 @@
-# 🍰 Luminar PWA - Sistema de Gestão para Doçuras de Artemis
+# 🍰 Luminar PWA – Gestão Inteligente para Vendedores de Rua
 
-Sistema completo de gestão de vendas para microempreendedores, com sugestão inteligente de mix de produtos, controle de fiados e análise de eficiência. Funciona 100% offline como PWA (Progressive Web App).
-
-## ✨ Funcionalidades
-
-### 📊 Dashboard
-- Metas diárias (Sobrevivência, Confortável, Ideal)
-- Barra de progresso visual
-- Gráfico de vendas da semana
-- Sugestão de mix baseada no clima e histórico
-- Previsão do tempo integrada (Open-Meteo)
-
-### 📝 Registro Diário
-- Formato idêntico ao seu registro Obsidian atual
-- Entrada de fluxo (pagos, fiados, recebidos)
-- Tempo operacional (início/fim)
-- Itens vendidos por categoria (levado/vendido)
-- Cálculo automático de eficiência
-- Observações e feedback dos agentes
-
-### 👥 Controle de Fiados
-- Cadastro de devedores
-- Alerta de fiados vencidos
-- Cálculo de total a receber
-- Quitação com um clique
-
-### 📈 Relatórios
-- Estatísticas de vendas
-- Exportação de backup (JSON)
-- Exportação para Obsidian (Markdown)
-- Importação de dados
-
-### 🧠 Inteligência de Mix
-- Regras configuráveis por você
-- Ajustes automáticos baseados em:
-  - Clima (sol, chuva, temperatura)
-  - Dia da semana
-  - Histórico de eficiência
-- Aprendizado com seus dados
-
-## 🛠️ Tecnologias (Zero Dependências Externas)
-
-- **HTML5 + CSS3** - Estrutura e estilos
-- **Vanilla JavaScript** - Lógica da aplicação
-- **IndexedDB** - Banco de dados local
-- **Service Workers** - Funcionalidade offline
-- **Chart.js** - Gráficos (CDN)
-- **Tailwind CSS** - Estilos utilitários (CDN)
-- **Open-Meteo API** - Previsão do tempo (gratuita, sem API key)
-
-## 🚀 Deploy (Gratuito)
-
-### Opção 1: GitHub Pages (Recomendada)
-
-1. Crie um repositório no GitHub
-2. Faça upload de todos os arquivos
-3. Vá em **Settings > Pages**
-4. Selecione branch `main` e pasta `/ (root)`
-5. Seu site estará em `https://seuusuario.github.io/artemis-pwa`
-
-### Opção 2: Vercel (Mais rápido)
-
-1. Acesse [vercel.com](https://vercel.com)
-2. Login com GitHub
-3. Importe seu repositório
-4. Deploy automático a cada push
-
-### Opção 3: Netlify
-
-1. Acesse [netlify.com](https://netlify.com)
-2. Arraste a pasta do projeto para a área de deploy
-3. Pronto! URL gerada automaticamente
-
-## 📱 Instalação como App
-
-### Android (Chrome)
-1. Acesse o site pelo Chrome
-2. Toque em **"Adicionar à tela inicial"**
-3. O app será instalado como aplicativo nativo
-
-### iOS (Safari)
-1. Acesse pelo Safari
-2. Toque no botão **Compartilhar**
-3. Selecione **"Adicionar à Tela de Início"**
-
-## 🔒 Segurança
-
-- **Dados 100% locais** - Nada sai do seu dispositivo
-- **HTTPS obrigatório** - Para funcionar como PWA
-- **Sem servidor backend** - Zero risco de vazamento
-- **Backup criptografado** - Exportação JSON protegida
-
-## 📂 Estrutura de Arquivos
-
-```
-artemis-pwa/
-├── index.html          # Página principal
-├── manifest.json       # Configuração PWA
-├── sw.js              # Service Worker (offline)
-├── icons/
-│   └── icon.svg       # Ícone do app
-├── js/
-│   ├── db.js          # IndexedDB manager
-│   ├── weather.js     # API de clima
-│   ├── mixEngine.js   # Motor de sugestão
-│   └── app.js         # Aplicação principal
-└── README.md          # Este arquivo
-```
-
-## 🎯 Roadmap
-
-### v1.0 (Atual)
-- [x] Dashboard com metas
-- [x] Registro diário completo
-- [x] Controle de fiados
-- [x] Gráficos semanais
-- [x] Sugestão de mix
-- [x] Exportação Obsidian
-- [x] Funciona offline
-
-### v1.1 (Futuro)
-- [ ] Multi-usuário (até 5)
-- [ ] Sync via GitHub Gist
-- [ ] Notificações push
-- [ ] Relatórios PDF
-- [ ] Tema escuro
-
-### v2.0 (Futuro)
-- [ ] App nativo (Capacitor)
-- [ ] Leitura de QR Code
-- [ ] Integração WhatsApp
-- [ ] Machine Learning avançado
-
-## 📝 Dados de Exemplo
-
-O sistema já vem com:
-- 27 produtos cadastrados (seu catálogo atual)
-- 4 regras de mix pré-configuradas
-- Metas: R$110 / R$150 / R$260
-
-## 🤝 Contribuição
-
-Este é um projeto pessoal para Doçuras de Artemis, mas sinta-se livre para forkar e adaptar para seu negócio!
-
-## 📄 Licença
-
-MIT License - Livre para uso comercial e pessoal.
+> **Versão 1.0 (Alpha Pública)**  
+> *Encerrada em 12 de Abril de 2026*  
+> Este repositório contém a versão pública inicial do Luminar. A partir da **V2.0**, o desenvolvimento continuará em repositório privado, com foco em segurança financeira, alocação de lucros e escalabilidade.
 
 ---
 
-**Feito com 💜 por Meph para Doçuras de Artemis**
+## ✨ O que o Luminar V1.0 faz?
+
+O Luminar é um **PWA offline‑first** desenvolvido para vendedores de rua (brigadeiros, brownies, bolos, etc.). Ele substitui cadernos e planilhas por um assistente completo que **sugere o mix de produtos ideal**, controla fiados, acompanha metas e gera relatórios – tudo funcionando perfeitamente sem internet.
+
+### 📊 Dashboard Inteligente
+- Metas diárias (Sobrevivência, Confortável, Ideal) com barra de progresso.
+- **Sugestão de mix** baseada em clima, dia da semana e histórico de vendas.
+- **Abas Hoje / Amanhã** para planejamento com previsão do tempo.
+- Gráfico de vendas da semana.
+- Cards de faturamento semanal e mensal (já somando recebidos de fiados).
+
+### 📝 Registro Diário Completo
+- Formulário idêntico ao registro do Obsidian.
+- Entrada de fluxo: Pagos, Fiados e Recebidos.
+- **Accordion de categorias** (sanfonas) para evitar rolagem infinita.
+- **Pré‑preenchimento inteligente** com sugestão de mix (sem valores automáticos).
+- Horário de início já preenchido com a preferência do vendedor (capturada no onboarding).
+- Cálculo automático de eficiência geral e por categoria.
+
+### 👥 Controle de Fiados
+- Lista de fiados ativos e vencidos.
+- **Quitação com confirmação inteligente**: pergunta se o valor deve ser automaticamente adicionado ao caixa do dia.
+- Total a receber atualizado em tempo real.
+
+### 📈 Relatórios e Backup
+- Estatísticas de dias registrados.
+- **Exportação / Importação de backup (JSON)** para compartilhar entre dispositivos.
+- Exportação para **Obsidian (Markdown)** compatível com seu formato `#financeiro`.
+
+### 🧠 Motor de Sugestão de Mix (MixEngine)
+- Combina **regras configuráveis**, **impacto do clima** e **eficiência histórica**.
+- **Modelo de dados avançado**: `unidade_base` e `fator_conversão` (ex: 1 Caixa = 4 Avulsos) – preparado para combos e controle de estoque.
+- **Valor mínimo configurável** para o mix (ex: "quero sugestão de pelo menos R$250").
+
+### 🔐 Multi‑usuário e Personalização
+- Isolamento total de dados por vendedor (IndexedDB com `userId`).
+- Onboarding assistido no primeiro acesso (nome da loja, perfil fixo/ambulante, horário habitual).
+- Menu hambúrguer (☰) agrupando configurações, backup e logout.
+
+### 🌦️ Clima e Localização
+- Previsão do tempo via **Open‑Meteo** (gratuita, sem API key).
+- Busca manual de cidade ou **uso do GPS** do dispositivo.
+- Cache de 30 minutos para economia de dados.
+
+### 📦 Arquitetura Offline‑First
+- **IndexedDB** para todos os dados (registros, produtos, fiados, configurações).
+- **Service Worker** com estratégia cache‑first (assets) e network‑first (HTML).
+- Funciona integralmente sem internet – ideal para a rua.
+
+---
+
+## 🛠️ Tecnologias Utilizadas
+
+| Camada | Tecnologia |
+| :--- | :--- |
+| **Frontend** | HTML5, CSS3, JavaScript (ES6+) |
+| **Estilização** | Tailwind CSS (via CDN) |
+| **Gráficos** | Chart.js |
+| **Banco de Dados** | IndexedDB (gerenciado por `db.js`) |
+| **Offline** | Service Worker (`sw.js`) |
+| **Clima** | Open‑Meteo API + Nominatim (OpenStreetMap) |
+| **PWA** | Manifesto Web, instalável em Android/iOS |
+
+*Nenhuma dependência de backend ou bibliotecas pesadas – tudo roda localmente.*
+
+---
+
+## 📂 Estrutura de Arquivos (V1.0)
+artemis-pwa/
+├── index.html # Página principal (SPA)
+├── manifest.json # Configuração PWA
+├── sw.js # Service Worker (cache e offline)
+├── README.md # Este documento
+├── icons/ # Ícones do app
+│ ├── icon.svg
+│ ├── icon-192x192.png
+│ └── icon-512x512.png
+└── js/
+├── app.js # Controlador principal (monolítico – será modularizado na V2)
+├── db.js # Gerenciador do IndexedDB
+├── weather.js # Clima e geolocalização
+├── mixEngine.js # Motor de sugestão de mix
+├── health-check.js # Diagnóstico automático (console)
+└── utils.js # Funções auxiliares (escapeHtml, safeNumber, etc.)
+
+---
+
+## 🚀 Deploy Rápido (GitHub Pages)
+
+1. Faça um fork ou clone deste repositório.
+2. Acesse **Settings > Pages** no GitHub.
+3. Selecione a branch `main` e a pasta `/ (root)`.
+4. O app estará disponível em `https://seu-usuario.github.io/luminar-pwa`.
+
+*Também funciona perfeitamente em **Vercel** ou **Netlify** (arraste a pasta).*
+
+---
+
+## 📱 Instalação como App (PWA)
+
+- **Android (Chrome)**: Menu ⋮ > "Adicionar à tela inicial".
+- **iOS (Safari)**: Compartilhar > "Adicionar à Tela de Início".
+
+O app abrirá em tela cheia, como um aplicativo nativo.
+
+---
+
+## ✅ Funcionalidades Concluídas na V1.0
+
+- [x] Login multi‑usuário (isolamento de dados)
+- [x] Personalização (nome da loja, vendedor)
+- [x] CRUD completo de produtos
+- [x] Configurações: Metas (diária/semanal/mensal), Indicadores, Localização
+- [x] Onboarding guiado (perfil fixo/ambulante, horário)
+- [x] Botão Quitar com confirmação e integração automática ao caixa
+- [x] Accordion no Registro de Vendas
+- [x] Modelo `unidade_base` + `fator_conversao` para embalagens
+- [x] Seleção de localização (GPS + busca manual)
+- [x] Mix sugerido com valor mínimo configurável e abas Hoje/Amanhã
+- [x] Menu Hambúrguer (agrupando ações)
+- [x] Correção de bugs: botões "X", temperatura inteira, metas no Dashboard
+- [x] Arquitetura Offline First completa
+
+---
+
+## 🔮 O que vem na V2.0? (Desenvolvimento Privado)
+
+A partir da **Versão 2.0**, o projeto entrará em um novo patamar, focado em **saúde financeira** e **segurança**:
+
+- 🔐 **Criptografia de dados sensíveis** (custos fixos, metas, alocações) usando Web Crypto API.
+- 💰 **Onboarding Financeiro** para capturar gastos reais do vendedor.
+- 🎯 **Metas Recomendadas Inteligentes** calculadas a partir dos custos.
+- 📊 **Alocação de Vendas (50/30/10/10)** exibida no Dashboard.
+- 🏗️ **Refatoração modular** do `app.js` para escalabilidade.
+- 📈 Gráfico de eficiência semanal, CMV, relatórios avançados e muito mais.
+
+*O repositório público será arquivado como referência para a comunidade. Para acompanhar o futuro do Luminar, fique de olho nos anúncios!*
+
+---
+
+## 🤝 Para Desenvolvedores e Entusiastas
+
+Este código é oferecido como **material de estudo e inspiração**. Você pode:
+
+- Estudar a implementação de um PWA offline‑first com IndexedDB.
+- Entender como funciona um motor de sugestão baseado em regras e histórico.
+- Adaptar a estrutura para o seu próprio negócio (doces, salgados, artesanato, etc.).
+
+Fique à vontade para abrir issues com dúvidas ou sugestões – elas podem influenciar a V2.0!
+
+---
+
+## 📄 Licença
+
+MIT License – Livre para uso pessoal e comercial, com atribuição.
+
+---
+
+**Feito com 💜 por Meph para Doçuras de Artemis**  
+*"Transformando vendas de rua em decisões inteligentes."*
