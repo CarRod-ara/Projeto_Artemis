@@ -38,82 +38,111 @@ class MixEngine {
   async generateSuggestion(context) {
     const { data, diaSemana, clima, temperatura, produtos, regras } = context;
     this.produtos = produtos; // guarda referência para uso nos helpers
-    
+
     // Start with default mix
     let suggestedMix = { ...this.defaultMix };
-    
+
     // Apply user-defined rules
-    suggestedMix = this.applyRules(suggestedMix, {
+    suggestedMix = this.applyRules(
+      suggestedMix,
+      {
         clima: clima?.condition?.category,
         diaSemana: this.getDiaSemanaAbrev(diaSemana),
         temperatura: temperatura,
-        periodoMes: this.getPeriodoMes(data)
-    }, regras);
-    
+        periodoMes: this.getPeriodoMes(data),
+      },
+      regras,
+    );
+
     // Apply weather impact
     if (clima) {
-        suggestedMix = this.applyWeatherImpact(suggestedMix, clima);
+      suggestedMix = this.applyWeatherImpact(suggestedMix, clima);
     }
-    
+
     // Apply historical adjustments (if we have enough data)
     const historico = await db.getAllRegistros();
     if (historico.length >= 7) {
-        suggestedMix = await this.applyHistoricalData(suggestedMix, {
-            diaSemana,
-            clima: clima?.condition?.category
-        }, historico);
+      suggestedMix = await this.applyHistoricalData(
+        suggestedMix,
+        {
+          diaSemana,
+          clima: clima?.condition?.category,
+        },
+        historico,
+      );
     }
-    
+
     // 🔥 NOVA LÓGICA: Converte para unidades base, ajusta eficiência e converte de volta
     // 1. Converter mix atual para unidades base equivalentes
     const mixEmUnidadesBase = {};
     for (const [id, qtd] of Object.entries(suggestedMix)) {
-        const produto = produtos.find(p => p.id === id);
-        if (!produto) continue;
-        const baseId = produto.unidade_base_id || id;
-        const fator = produto.fator_conversao || 1;
-        mixEmUnidadesBase[baseId] = (mixEmUnidadesBase[baseId] || 0) + qtd * fator;
+      const produto = produtos.find((p) => p.id === id);
+      if (!produto) continue;
+      const baseId = produto.unidade_base_id || id;
+      const fator = produto.fator_conversao || 1;
+      mixEmUnidadesBase[baseId] =
+        (mixEmUnidadesBase[baseId] || 0) + qtd * fator;
     }
-    
+
     // 2. Ajustar cada unidade base com eficiência histórica
     if (historico.length >= 7) {
-        for (const [baseId, qtdBase] of Object.entries(mixEmUnidadesBase)) {
-            const eficiencia = await this.calcularEficienciaUnidadeBase(baseId, historico);
-            // Aumenta se eficiência > 80%, diminui se < 50%
-            let fatorAjuste = 1.0;
-            if (eficiencia > 0.8) fatorAjuste = 1.2;
-            else if (eficiencia < 0.5) fatorAjuste = 0.8;
-            mixEmUnidadesBase[baseId] = Math.round(qtdBase * fatorAjuste);
-        }
+      for (const [baseId, qtdBase] of Object.entries(mixEmUnidadesBase)) {
+        const eficiencia = await this.calcularEficienciaUnidadeBase(
+          baseId,
+          historico,
+        );
+        // Aumenta se eficiência > 80%, diminui se < 50%
+        let fatorAjuste = 1.0;
+        if (eficiencia > 0.8) fatorAjuste = 1.2;
+        else if (eficiencia < 0.5) fatorAjuste = 0.8;
+        mixEmUnidadesBase[baseId] = Math.round(qtdBase * fatorAjuste);
+      }
     }
-    
+
     // 3. Converter de volta para embalagens comerciais
     const mixFinal = {};
     for (const [baseId, qtdBase] of Object.entries(mixEmUnidadesBase)) {
-        const embalagensConvertidas = this.converterUnidadesBaseParaEmbalagens(qtdBase, baseId, produtos);
-        Object.assign(mixFinal, embalagensConvertidas);
+      const embalagensConvertidas = this.converterUnidadesBaseParaEmbalagens(
+        qtdBase,
+        baseId,
+        produtos,
+      );
+      Object.assign(mixFinal, embalagensConvertidas);
     }
-    
+
     // 4. Para produtos que não participam dessa dinâmica (unidade_base_id === próprio id), mantém valor original
     for (const [id, qtd] of Object.entries(suggestedMix)) {
-        const produto = produtos.find(p => p.id === id);
-        if (!produto) continue;
-        // Se o produto não foi incluído na conversão (ex: não tem embalagens derivadas), preserva
-        if (!mixFinal[id] && produto.unidade_base_id === id) {
-            mixFinal[id] = qtd;
-        }
+      const produto = produtos.find((p) => p.id === id);
+      if (!produto) continue;
+      // Se o produto não foi incluído na conversão (ex: não tem embalagens derivadas), preserva
+      if (!mixFinal[id] && produto.unidade_base_id === id) {
+        mixFinal[id] = qtd;
+      }
     }
-    
+
     // Finalize (round, ensure minimums)
     suggestedMix = this.finalizeMix(mixFinal);
-    
+
+    // Ajuste para valor mínimo configurado
+    if (context.valorMinimo) {
+      let estimativa = this.estimateRevenue(suggestedMix, produtos);
+      if (estimativa < context.valorMinimo) {
+        const fatorAumento = context.valorMinimo / estimativa;
+        for (const id in suggestedMix) {
+          suggestedMix[id] = Math.ceil(suggestedMix[id] * fatorAumento);
+        }
+        // Recalcula estimativa para exibição
+        estimativa = this.estimateRevenue(suggestedMix, produtos);
+      }
+    }
+
     return {
-        mix: suggestedMix,
-        explicacao: this.generateExplanation(context, suggestedMix),
-        totalItens: Object.values(suggestedMix).reduce((a, b) => a + b, 0),
-        estimativaFaturamento: this.estimateRevenue(suggestedMix, produtos)
+      mix: suggestedMix,
+      explicacao: this.generateExplanation(context, suggestedMix),
+      totalItens: Object.values(suggestedMix).reduce((a, b) => a + b, 0),
+      estimativaFaturamento: this.estimateRevenue(suggestedMix, produtos),
     };
-}
+  }
 
   // Apply user-defined rules
   applyRules(mix, contexto, regras) {
@@ -383,54 +412,62 @@ class MixEngine {
     return "fim";
   }
   // Converte quantidade em unidades base para a melhor combinação de embalagens
-  converterUnidadesBaseParaEmbalagens(unidadesBase, produtoBaseId, produtosDisponiveis) {
+  converterUnidadesBaseParaEmbalagens(
+    unidadesBase,
+    produtoBaseId,
+    produtosDisponiveis,
+  ) {
     // Filtra todas as embalagens derivadas da mesma unidade base
     const embalagens = produtosDisponiveis
-        .filter(p => p.unidade_base_id === produtoBaseId && p.id !== produtoBaseId)
-        .sort((a, b) => a.fator_conversao - b.fator_conversao); // crescente (menor primeiro)
+      .filter(
+        (p) => p.unidade_base_id === produtoBaseId && p.id !== produtoBaseId,
+      )
+      .sort((a, b) => a.fator_conversao - b.fator_conversao); // crescente (menor primeiro)
 
     const resultado = {};
 
     // Se não há embalagens derivadas, retorna a unidade base (produto independente)
     if (embalagens.length === 0) {
-        resultado[produtoBaseId] = unidadesBase;
-        return resultado;
+      resultado[produtoBaseId] = unidadesBase;
+      return resultado;
     }
 
     // Se a quantidade é menor que a menor embalagem, arredonda para 1 unidade da menor
     const menorEmbalagem = embalagens[0];
     if (unidadesBase < menorEmbalagem.fator_conversao) {
-        resultado[menorEmbalagem.id] = 1;
-        return resultado;
+      resultado[menorEmbalagem.id] = 1;
+      return resultado;
     }
 
     let restante = unidadesBase;
 
     // Ordena da maior para a menor para otimizar
-    const embalagensDecrescente = [...embalagens].sort((a, b) => b.fator_conversao - a.fator_conversao);
+    const embalagensDecrescente = [...embalagens].sort(
+      (a, b) => b.fator_conversao - a.fator_conversao,
+    );
 
     for (const emb of embalagensDecrescente) {
-        const fator = emb.fator_conversao;
-        const qtd = Math.floor(restante / fator);
-        if (qtd > 0) {
-            resultado[emb.id] = qtd;
-            restante -= qtd * fator;
-        }
+      const fator = emb.fator_conversao;
+      const qtd = Math.floor(restante / fator);
+      if (qtd > 0) {
+        resultado[emb.id] = qtd;
+        restante -= qtd * fator;
+      }
     }
 
     // Realoca qualquer restante para a menor embalagem (sem avulsos)
     if (restante > 0) {
-        const idMenor = menorEmbalagem.id;
-        resultado[idMenor] = (resultado[idMenor] || 0) + 1;
+      const idMenor = menorEmbalagem.id;
+      resultado[idMenor] = (resultado[idMenor] || 0) + 1;
     }
 
     // Se por algum motivo ficou vazio, garante ao menos 1 da menor
     if (Object.keys(resultado).length === 0 && unidadesBase > 0) {
-        resultado[menorEmbalagem.id] = 1;
+      resultado[menorEmbalagem.id] = 1;
     }
 
     return resultado;
-}
+  }
 
   // Calcula eficiência histórica de uma unidade base (ex: '301')
   async calcularEficienciaUnidadeBase(baseId, historico) {

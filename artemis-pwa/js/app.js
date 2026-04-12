@@ -300,6 +300,8 @@ class LuminarApp {
       usarClima: true,
       usarDiaSemana: true,
     };
+    this.mixValorMinimo =
+      (await db.getConfig(this.currentUserId, "mixValorMinimo")) || 250;
     this.produtos = (await db.getConfig(this.currentUserId, "produtos")) || [];
     this.regrasMix =
       (await db.getConfig(this.currentUserId, "regrasMix")) || [];
@@ -422,22 +424,17 @@ class LuminarApp {
             </div>
 
             <div class="bg-white rounded-2xl p-5 card-shadow">
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="font-semibold text-gray-700">Sugestão de Mix</h2>
-                    <span class="text-2xl">${this.weatherData?.current?.condition?.icon || "🌡️"}</span>
-                </div>
-                <p class="text-sm text-gray-600 mb-3">
-                    ${this.weatherData?.current?.condition?.name || "Carregando..."} • 
-                    ${this.weatherData?.current?.temperature ?? "--"}°C
-                    ${this.weatherData?.cached ? "(cache)" : ""}
-                </p>
-                <p class="text-xs text-gray-500 mb-3">${this.escapeHtml(sugestaoMix.explicacao || "")}</p>
-                <div class="space-y-2 mb-4">${this.renderMixPreview(sugestaoMix.mix)}</div>
-                <div class="flex justify-between items-center text-sm">
-                    <span class="text-gray-600">Total: <strong>${sugestaoMix.totalItens ?? 0}</strong> itens</span>
-                    <span class="text-green-600">Estimativa: R$ ${sugestaoMix.estimativaFaturamento ?? 0}</span>
-                </div>
-            </div>
+    <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold text-gray-700">Sugestão de Mix</h2>
+        <div class="flex gap-1">
+            <button id="tabMixHoje" class="px-3 py-1 text-sm rounded-full bg-purple-100 text-purple-700 font-medium">Hoje</button>
+            <button id="tabMixAmanha" class="px-3 py-1 text-sm rounded-full bg-gray-100 text-gray-600 font-medium">Amanhã</button>
+        </div>
+    </div>
+    <div id="mixContentContainer">
+        <!-- Conteúdo carregado dinamicamente -->
+    </div>
+</div>
 
             <div class="bg-white rounded-2xl p-5 card-shadow">
                 <h2 class="font-semibold text-gray-700 mb-4">Vendas da Semana</h2>
@@ -459,6 +456,88 @@ class LuminarApp {
         `;
 
     this.renderWeeklyChart(registros);
+
+    // 🔥 Carrega o mix na aba ativa (Hoje por padrão)
+    const mixContainer = document.getElementById("mixContentContainer");
+    if (mixContainer) {
+      const carregarMix = async (data, targetContainer) => {
+        targetContainer.innerHTML =
+          '<p class="text-gray-500 text-sm py-4 text-center">Carregando sugestão...</p>';
+
+        let climaParaData = this.weatherData;
+        if (data !== hoje) {
+          const forecast = this.weatherData?.forecast?.[0];
+          if (forecast) {
+            climaParaData = {
+              current: {
+                temperature: forecast.maxTemp,
+                condition: forecast.condition,
+              },
+              forecast: this.weatherData.forecast,
+            };
+          }
+        }
+
+        const sugestao = await this.getMixSuggestionForDate(
+          data,
+          climaParaData,
+        );
+        targetContainer.innerHTML = `
+                <p class="text-sm text-gray-600 mb-3">
+                    ${climaParaData?.current?.condition?.name || "Clima"} • ${climaParaData?.current?.temperature ?? "--"}°C
+                    ${climaParaData?.cached ? "(cache)" : ""}
+                </p>
+                <p class="text-xs text-gray-500 mb-3">${this.escapeHtml(sugestao.explicacao || "")}</p>
+                <div class="space-y-2 mb-4">${this.renderMixPreview(sugestao.mix)}</div>
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-gray-600">Total: <strong>${sugestao.totalItens ?? 0}</strong> itens</span>
+                    <span class="text-green-600">Estimativa: R$ ${sugestao.estimativaFaturamento ?? 0}</span>
+                </div>
+            `;
+      };
+
+      await carregarMix(hoje, mixContainer);
+
+      // Listeners para as abas
+      document
+        .getElementById("tabMixHoje")
+        ?.addEventListener("click", async () => {
+          document
+            .getElementById("tabMixHoje")
+            .classList.add("bg-purple-100", "text-purple-700");
+          document
+            .getElementById("tabMixHoje")
+            .classList.remove("bg-gray-100", "text-gray-600");
+          document
+            .getElementById("tabMixAmanha")
+            .classList.add("bg-gray-100", "text-gray-600");
+          document
+            .getElementById("tabMixAmanha")
+            .classList.remove("bg-purple-100", "text-purple-700");
+          await carregarMix(hoje, mixContainer);
+        });
+
+      document
+        .getElementById("tabMixAmanha")
+        ?.addEventListener("click", async () => {
+          document
+            .getElementById("tabMixAmanha")
+            .classList.add("bg-purple-100", "text-purple-700");
+          document
+            .getElementById("tabMixAmanha")
+            .classList.remove("bg-gray-100", "text-gray-600");
+          document
+            .getElementById("tabMixHoje")
+            .classList.add("bg-gray-100", "text-gray-600");
+          document
+            .getElementById("tabMixHoje")
+            .classList.remove("bg-purple-100", "text-purple-700");
+          const amanha = new Date(Date.now() + 86400000)
+            .toISOString()
+            .split("T")[0];
+          await carregarMix(amanha, mixContainer);
+        });
+    }
   }
 
   renderMixPreview(mix) {
@@ -617,7 +696,7 @@ class LuminarApp {
                         <div>
                             <label class="block text-sm text-gray-600 mb-1">Início</label>
                             <input type="time" id="regInicio" required
-                                   value="${registroExistente?.tempoOperacional?.inicio || ""}"
+                                    value="${registroExistente?.tempoOperacional?.inicio || ""}"
                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
                         </div>
                         <div>
@@ -708,7 +787,7 @@ class LuminarApp {
         categorias[produto.categoria].produtos.push({
           ...produto,
           sugestao,
-          levado: existente?.levado || sugestao || 0, // Pré-preenche com sugestão se não houver existente
+          levado: existente?.levado || 0,
           vendido: existente?.vendido || 0,
         });
       }
@@ -718,10 +797,8 @@ class LuminarApp {
     for (const [catKey, categoria] of Object.entries(categorias)) {
       if (categoria.produtos.length === 0) continue;
       // Usa <details> para accordion nativo – aberto por padrão se houver sugestão > 0 ou itens já preenchidos
-      const temSugestaoOuPreenchido = categoria.produtos.some(
-        (p) => p.sugestao > 0 || p.levado > 0,
-      );
-      const openAttr = temSugestaoOuPreenchido ? "open" : "";
+      // Sempre começa fechado, independente de sugestão
+      const openAttr = "";
 
       html += `<details class="bg-gray-50 rounded-lg p-3 mb-3" ${openAttr}>
             <summary class="font-medium text-gray-700 cursor-pointer list-none flex items-center">
@@ -1393,6 +1470,11 @@ class LuminarApp {
                         <label class="block text-sm font-medium text-gray-600 mb-2">Meta Mensal</label>
                         <input type="number" id="metaMensal" value="${metas.mensal || 3000}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                     </div>
+                    <div>
+    <label class="block text-sm font-medium text-gray-600 mb-2">Valor Mínimo do Mix (R$)</label>
+    <input type="number" id="mixValorMinimo" value="${this.mixValorMinimo || 250}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+    <p class="text-xs text-gray-500 mt-1">O sistema tentará sugerir um mix que atinja pelo menos este valor.</p>
+</div>
                     <button id="btnSaveSettings" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Salvar Metas</button>
                 </div>
             </div>
@@ -1450,6 +1532,10 @@ class LuminarApp {
       semanal: parseInt(document.getElementById("metaSemanal")?.value) || 750,
       mensal: parseInt(document.getElementById("metaMensal")?.value) || 3000,
     };
+    const mixValorMinimo =
+      parseInt(document.getElementById("mixValorMinimo")?.value) || 250;
+    this.mixValorMinimo = mixValorMinimo;
+    await db.setConfig(this.currentUserId, "mixValorMinimo", mixValorMinimo);
     await db.setConfig(this.currentUserId, "metas", this.metas);
     this.closeModal();
     this.showToast("Metas salvas!", "success");
@@ -1961,6 +2047,23 @@ class LuminarApp {
 
   async syncData() {
     this.showToast("Dados sincronizados localmente", "success");
+  }
+
+  async getMixSuggestionForDate(data, climaData = null) {
+    const diaSemana = new Date(data + "T12:00:00").toLocaleDateString("pt-BR", {
+      weekday: "long",
+    });
+    const clima = climaData || this.weatherData;
+
+    return await mixEngine.generateSuggestion({
+      data: data,
+      diaSemana: diaSemana,
+      clima: clima,
+      temperatura: clima?.current?.temperature,
+      produtos: this.produtos,
+      regras: this.regrasMix,
+      valorMinimo: this.mixValorMinimo || 250,
+    });
   }
 
   // === CRUD DE PRODUTOS (Modal Configurações) ===
