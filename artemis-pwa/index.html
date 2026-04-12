@@ -168,6 +168,27 @@
       #mainContent {
         padding-bottom: 80px;
       }
+
+      /* Corrige posicionamento do menu hambúrguer */
+      header .relative {
+        position: relative;
+      }
+
+      #headerMenuDropdown {
+        position: absolute;
+        right: 0;
+        top: 100%;
+        margin-top: 0.5rem;
+        min-width: 12rem;
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        z-index: 100;
+      }
+
+      #headerMenuBtn {
+        flex-shrink: 0;
+      }
     </style>
   </head>
   <body class="bg-gray-100 min-h-screen">
@@ -181,36 +202,32 @@
     <!-- App Container -->
     <div id="app" class="max-w-md mx-auto bg-gray-50 min-h-screen">
       <!-- Header -->
-      <header class="gradient-bg text-white p-4 sticky top-0 z-40">
-        <div class="flex justify-between items-center">
-          <div>
-            <h1 class="text-xl font-bold leading-tight">Luminar</h1>
-            <p class="text-sm opacity-80 leading-tight" id="currentDate">
-              Carregando...
-            </p>
-          </div>
-          <div class="flex items-center gap-2">
-            <button
-              onclick="app.syncData()"
-              class="flex items-center justify-center w-9 h-9 bg-white/20 rounded-lg hover:bg-white/30 transition"
-              title="Sincronizar"
-            >
-              🔄
-            </button>
-            <button
-              onclick="app.exportData()"
-              class="flex items-center justify-center w-9 h-9 bg-white/20 rounded-lg hover:bg-white/30 transition"
-              title="Exportar"
-            >
-              💾
-            </button>
-            <button
-              onclick="app.openSettings()"
-              class="flex items-center justify-center w-9 h-9 bg-white/20 rounded-lg hover:bg-white/30 transition"
-              title="Configurações"
-            >
-              ⚙️
-            </button>
+      <header class="gradient-bg text-white p-4 sticky top-0 z-40 relative">
+        
+        <div class="pr-14 w-full"> 
+          <h1 class="text-xl font-bold leading-tight truncate">Doçuras de Artemis</h1>
+          <p class="text-sm opacity-80 leading-tight mt-1 truncate" id="currentDate">
+            Carregando...
+          </p>
+        </div>
+
+        <div class="absolute right-4 top-4">
+          <button
+            id="headerMenuBtn"
+            class="flex items-center justify-center w-9 h-9 bg-white/20 rounded-lg hover:bg-white/30 transition shadow-sm"
+            title="Menu"
+          >
+            ☰
+          </button>
+          <div
+            id="headerMenuDropdown"
+            class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 hidden z-50"
+          >
+            <button id="menuSync" class="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm">🔄 Sincronizar</button>
+            <button id="menuBackup" class="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm">💾 Backup (JSON)</button>
+            <button id="menuSettings" class="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm">⚙️ Configurações</button>
+            <hr class="my-1 border-gray-100" />
+            <button id="menuLogout" class="w-full text-left px-4 py-2 text-red-600 hover:bg-red-50 text-sm">🚪 Sair</button>
           </div>
         </div>
       </header>

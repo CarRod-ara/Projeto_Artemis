@@ -383,34 +383,54 @@ class MixEngine {
     return "fim";
   }
   // Converte quantidade em unidades base para a melhor combinação de embalagens
-  converterUnidadesBaseParaEmbalagens(
-    unidadesBase,
-    produtoBaseId,
-    produtosDisponiveis,
-  ) {
-    // Filtra embalagens derivadas da mesma unidade base (exclui a própria unidade base)
+  converterUnidadesBaseParaEmbalagens(unidadesBase, produtoBaseId, produtosDisponiveis) {
+    // Filtra todas as embalagens derivadas da mesma unidade base
     const embalagens = produtosDisponiveis
-      .filter(
-        (p) => p.unidade_base_id === produtoBaseId && p.id !== produtoBaseId,
-      )
-      .sort((a, b) => b.fator_conversao - a.fator_conversao); // maiores fatores primeiro
+        .filter(p => p.unidade_base_id === produtoBaseId && p.id !== produtoBaseId)
+        .sort((a, b) => a.fator_conversao - b.fator_conversao); // crescente (menor primeiro)
 
     const resultado = {};
+
+    // Se não há embalagens derivadas, retorna a unidade base (produto independente)
+    if (embalagens.length === 0) {
+        resultado[produtoBaseId] = unidadesBase;
+        return resultado;
+    }
+
+    // Se a quantidade é menor que a menor embalagem, arredonda para 1 unidade da menor
+    const menorEmbalagem = embalagens[0];
+    if (unidadesBase < menorEmbalagem.fator_conversao) {
+        resultado[menorEmbalagem.id] = 1;
+        return resultado;
+    }
+
     let restante = unidadesBase;
 
-    for (const emb of embalagens) {
-      const qtd = Math.floor(restante / emb.fator_conversao);
-      if (qtd > 0) {
-        resultado[emb.id] = qtd;
-        restante -= qtd * emb.fator_conversao;
-      }
+    // Ordena da maior para a menor para otimizar
+    const embalagensDecrescente = [...embalagens].sort((a, b) => b.fator_conversao - a.fator_conversao);
+
+    for (const emb of embalagensDecrescente) {
+        const fator = emb.fator_conversao;
+        const qtd = Math.floor(restante / fator);
+        if (qtd > 0) {
+            resultado[emb.id] = qtd;
+            restante -= qtd * fator;
+        }
     }
-    // Se sobrar unidades base (avulsos), mantém como avulso
+
+    // Realoca qualquer restante para a menor embalagem (sem avulsos)
     if (restante > 0) {
-      resultado[produtoBaseId] = restante;
+        const idMenor = menorEmbalagem.id;
+        resultado[idMenor] = (resultado[idMenor] || 0) + 1;
     }
+
+    // Se por algum motivo ficou vazio, garante ao menos 1 da menor
+    if (Object.keys(resultado).length === 0 && unidadesBase > 0) {
+        resultado[menorEmbalagem.id] = 1;
+    }
+
     return resultado;
-  }
+}
 
   // Calcula eficiência histórica de uma unidade base (ex: '301')
   async calcularEficienciaUnidadeBase(baseId, historico) {

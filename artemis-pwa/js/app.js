@@ -58,6 +58,7 @@ class LuminarApp {
           await this.loadUserData();
           this.hideLoginScreenAndShowApp();
           this.setupConnectivityListeners();
+          this.setupHeaderMenu();
           this.initialized = true;
           console.log("✅ Luminar initialized successfully");
           return;
@@ -73,6 +74,15 @@ class LuminarApp {
         navigator.serviceWorker.addEventListener("controllerchange", () => {
           console.log("🔄 Nova versão detectada! Recarregando...");
           window.location.reload();
+        });
+
+        navigator.serviceWorker.addEventListener("message", (event) => {
+          if (event.data && event.data.type === "SW_ACTIVATED") {
+            console.log(
+              "🔄 SW assumiu controle. Recarregando para aplicar nova versão...",
+            );
+            window.location.reload();
+          }
         });
 
         // Verifica se há uma atualização pendente
@@ -253,8 +263,13 @@ class LuminarApp {
     await db.initDefaultConfigForUser(userId);
 
     this.showToast("Cadastro realizado! Faça login.", "success");
-    document.getElementById("registerFormContainer").style.display = "none";
-    document.getElementById("loginFormContainer").style.display = "block";
+    this.currentUserId = userId;
+    this.currentUser = newUser;
+    localStorage.setItem("luminar_userId", userId);
+    await this.loadUserData(); // Carrega produtos e metas padrão
+    this.startOnboarding(); // Novo método
+    //document.getElementById("registerFormContainer").style.display = "none";
+    //document.getElementById("loginFormContainer").style.display = "block";
   }
 
   async loadUserData() {
@@ -430,17 +445,17 @@ class LuminarApp {
             </div>
 
             <div class="grid grid-cols-2 gap-4">
-                <div class="bg-white rounded-2xl p-4 card-shadow">
-                    <div class="text-sm text-gray-500 mb-1">Esta Semana</div>
-                    <div class="text-xl font-bold text-gray-800">R$ ${vendasSemana.toFixed(2)}</div>
-                    <div class="text-xs text-gray-400">Meta: R$ ${((metas.ideal ?? 260) * 7).toFixed(2)}</div>
-                </div>
-                <div class="bg-white rounded-2xl p-4 card-shadow">
-                    <div class="text-sm text-gray-500 mb-1">Este Mês</div>
-                    <div class="text-xl font-bold text-gray-800">R$ ${vendasMes.toFixed(2)}</div>
-                    <div class="text-xs text-gray-400">Meta: R$ ${((metas.ideal ?? 260) * 30).toFixed(2)}</div>
-                </div>
-            </div>
+    <div class="bg-white rounded-2xl p-4 card-shadow">
+        <div class="text-sm text-gray-500 mb-1">Esta Semana</div>
+        <div class="text-xl font-bold text-gray-800">R$ ${vendasSemana.toFixed(2)}</div>
+        <div class="text-xs text-gray-400">Meta: R$ ${(metas.semanal ?? 750).toFixed(2)}</div>
+    </div>
+    <div class="bg-white rounded-2xl p-4 card-shadow">
+        <div class="text-sm text-gray-500 mb-1">Este Mês</div>
+        <div class="text-xl font-bold text-gray-800">R$ ${vendasMes.toFixed(2)}</div>
+        <div class="text-xs text-gray-400">Meta: R$ ${(metas.mensal ?? 3000).toFixed(2)}</div>
+    </div>
+</div>
         `;
 
     this.renderWeeklyChart(registros);
@@ -637,9 +652,9 @@ class LuminarApp {
                         </div>
                         <div>
                             <label class="block text-sm text-gray-600 mb-1">Temperatura (°C)</label>
-                            <input type="number" id="regClimaTemp" 
-                                   value="${this.weatherData?.current?.temperature || 25}"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                            <input type="number" id="regClimaTemp" step="1" 
+                                value="${Math.round(this.weatherData?.current?.temperature || 25)}"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                         </div>
                     </div>
                 </div>
@@ -919,6 +934,16 @@ class LuminarApp {
     document
       .getElementById("btnNovoFiado")
       ?.addEventListener("click", () => this.openModal("novoFiado"));
+    // 🔥 Delegação de eventos para o botão Quitar (com confirmação)
+    container.addEventListener("click", (e) => {
+      const btnQuitar = e.target.closest(".btn-quitar");
+      if (btnQuitar) {
+        const fiadoId = btnQuitar.dataset.fiadoId;
+        if (fiadoId) {
+          this.confirmarQuitarFiado(fiadoId); // <- chama o novo método
+        }
+      }
+    });
   }
 
   renderFiadoCard(fiado) {
@@ -942,6 +967,134 @@ class LuminarApp {
                 </div>
             </div>
         `;
+  }
+
+  // Novo método: exibe diálogo de confirmação antes de quitar
+  async confirmarQuitarFiado(fiadoId) {
+    const fiado = await db.getFiado(fiadoId);
+    if (!fiado) {
+      this.showToast("Fiado não encontrado.", "error");
+      return;
+    }
+
+    const valorFormatado = fiado.valor.toFixed(2);
+    const nomeCliente = this.escapeHtml(fiado.clienteNome);
+
+    // Cria um modal de confirmação personalizado
+    const modal = document.getElementById("modal");
+    const content = document.getElementById("modalContent");
+    if (!modal || !content) return;
+
+    content.innerHTML = `
+        <div class="p-5">
+            <h3 class="text-lg font-bold text-gray-800 mb-3">Confirmar Quitação</h3>
+            <p class="text-gray-700 mb-2">
+                Confirmar quitação de <strong>R$ ${valorFormatado}</strong> de <strong>${nomeCliente}</strong>?
+            </p>
+            <p class="text-gray-700 mb-4">
+                Deseja registrar este valor como recebido no fluxo de caixa de hoje?
+            </p>
+            <div class="flex gap-3">
+                <button id="btnQuitarComFluxo" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium">
+                    Sim, adicionar ao dia
+                </button>
+                <button id="btnQuitarSemFluxo" class="flex-1 bg-gray-600 text-white py-2 rounded-lg font-medium">
+                    Não, apenas quitar
+                </button>
+            </div>
+            <button id="btnCancelarQuitar" class="w-full mt-3 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium">
+                Cancelar
+            </button>
+        </div>
+    `;
+
+    modal.classList.remove("hidden");
+
+    // Listener para "Sim, adicionar ao dia"
+    document
+      .getElementById("btnQuitarComFluxo")
+      .addEventListener("click", async () => {
+        modal.classList.add("hidden");
+        await this.executarQuitarFiado(fiado, true);
+      });
+
+    // Listener para "Não, apenas quitar"
+    document
+      .getElementById("btnQuitarSemFluxo")
+      .addEventListener("click", async () => {
+        modal.classList.add("hidden");
+        await this.executarQuitarFiado(fiado, false);
+      });
+
+    // Listener para "Cancelar"
+    document
+      .getElementById("btnCancelarQuitar")
+      .addEventListener("click", () => {
+        modal.classList.add("hidden");
+      });
+  }
+
+  // Executa a quitação e opcionalmente adiciona ao fluxo de caixa
+  async executarQuitarFiado(fiado, adicionarAoFluxo) {
+    // Marca como quitado
+    fiado.pago = true;
+    fiado.dataPagamento = new Date().toISOString().split("T")[0];
+    fiado.quitado_automaticamente = adicionarAoFluxo; // campo novo
+    await db.saveFiado(fiado, this.currentUserId);
+
+    if (adicionarAoFluxo) {
+      // Adiciona ao registro do dia atual como "Recebidos de Fiados"
+      const hoje = new Date().toISOString().split("T")[0];
+      let registroHoje = await db.getRegistro(hoje, this.currentUserId);
+
+      if (!registroHoje) {
+        // Cria um registro mínimo se não existir
+        registroHoje = {
+          id: hoje,
+          data: hoje,
+          diaSemana: new Date().toLocaleDateString("pt-BR", {
+            weekday: "long",
+          }),
+          fluxo: { pagosDia: 0, fiadosHoje: 0, recebidosFiados: 0 },
+          tempoOperacional: { inicio: "", fim: "", totalMinutos: 0 },
+          itensVendidos: [],
+          clima: {
+            real: { condicao: "nublado", temperatura: 25 },
+            previsao: {
+              condicao: "nublado",
+              temperatura: 25,
+              fonte: "Open-Meteo",
+            },
+          },
+          observacoes: `Quitação automática do fiado de ${fiado.clienteNome}`,
+          eficiencia: { geral: 0, porCategoria: {}, porProduto: {} },
+          agentesFeedback: this.gerarFeedbackAgentes([], { geral: 0 }, hoje),
+        };
+      }
+
+      // Garante que a estrutura existe
+      if (!registroHoje.fluxo)
+        registroHoje.fluxo = { pagosDia: 0, fiadosHoje: 0, recebidosFiados: 0 };
+
+      // Adiciona o valor ao campo recebidosFiados
+      registroHoje.fluxo.recebidosFiados =
+        (registroHoje.fluxo.recebidosFiados || 0) + fiado.valor;
+
+      // Adiciona uma observação sobre a quitação automática
+      if (!registroHoje.observacoes) registroHoje.observacoes = "";
+      registroHoje.observacoes += `\n[Auto] Quitação de fiado: ${fiado.clienteNome} - R$ ${fiado.valor.toFixed(2)}`;
+
+      await db.saveRegistro(registroHoje, this.currentUserId);
+      this.showToast(
+        `Fiado quitado e R$ ${fiado.valor.toFixed(2)} adicionado ao caixa de hoje!`,
+        "success",
+      );
+    } else {
+      this.showToast("Fiado quitado com sucesso!", "success");
+    }
+
+    // Recarrega a tela de fiados
+    this.renderFiados(document.getElementById("mainContent"));
   }
 
   async quitarFiado(id) {
@@ -998,7 +1151,7 @@ class LuminarApp {
 
   // === MODALS ===
 
-  openModal(type) {
+  openModal(type, tab = null) {
     const modal = document.getElementById("modal");
     const content = document.getElementById("modalContent");
     if (!modal || !content) return;
@@ -1011,12 +1164,20 @@ class LuminarApp {
         document
           .getElementById("formNovoFiado")
           ?.addEventListener("submit", (e) => this.salvarFiado(e));
+        // Fecha ao clicar no X
+        const btnClose = content.querySelector("#btnCloseModal");
+        if (btnClose)
+          btnClose.addEventListener("click", () => this.closeModal());
         break;
       case "importar":
         content.innerHTML = this.renderImportarModal();
         document
           .getElementById("btnDoImport")
           ?.addEventListener("click", () => this.doImport());
+        const btnCloseImport = content.querySelector("#btnCloseModal");
+        if (btnCloseImport)
+          btnCloseImport.addEventListener("click", () => this.closeModal());
+
         break;
       case "settings":
         content.innerHTML = this.renderSettingsModal();
@@ -1058,6 +1219,25 @@ class LuminarApp {
         document
           .getElementById("btnSaveClima")
           ?.addEventListener("click", () => this.salvarConfigClima());
+        // 🔥 Listener para o botão de localização GPS
+        document
+          .getElementById("btnUsarLocalizacao")
+          ?.addEventListener("click", async () => {
+            try {
+              const coords = await this.obterLocalizacaoAtual();
+              const cidadeInput = document.getElementById("cidadeClima");
+              if (cidadeInput) {
+                cidadeInput.value = `${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}`;
+              }
+              this.showToast("Localização obtida com sucesso!", "success");
+            } catch (error) {
+              console.error("Erro ao obter localização:", error);
+              this.showToast(
+                "Não foi possível obter sua localização. Verifique as permissões.",
+                "error",
+              );
+            }
+          });
         // Listeners CRUD de produtos
         document
           .getElementById("btnAddProduto")
@@ -1075,10 +1255,20 @@ class LuminarApp {
             this.excluirProduto(id);
           });
         });
+        // Se uma tab específica foi solicitada, ativa-a
+        if (tab) {
+          const tabBtn = content.querySelector(
+            `.tab-settings[data-tab="${tab}"]`,
+          );
+          if (tabBtn) tabBtn.click();
+        }
         // Listener logout
         document
           .getElementById("btnLogout")
           ?.addEventListener("click", () => this.logout());
+        const btnCloseSettings = content.querySelector("#btnCloseModal");
+        if (btnCloseSettings)
+          btnCloseSettings.addEventListener("click", () => this.closeModal());
         break;
     }
   }
@@ -1222,9 +1412,10 @@ class LuminarApp {
                 <div class="space-y-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-600 mb-1">Cidade para previsão do tempo</label>
-                        <input type="text" id="cidadeClima" value="${this.escapeHtml(climaConfig.cidade || "")}" placeholder="Ex: Freguesia, Rio de Janeiro" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                        <p class="text-xs text-gray-500 mt-1">Usado para sugerir o mix de produtos.</p>
-                    </div>
+            <input type="text" id="cidadeClima" value="${this.escapeHtml(climaConfig.cidade || "")}" placeholder="Ex: Freguesia, Rio de Janeiro" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            <p class="text-xs text-gray-500 mt-1">Usado para sugerir o mix de produtos.</p>
+            <button type="button" id="btnUsarLocalizacao" class="w-full py-2 bg-blue-100 text-blue-700 rounded-lg text-sm mt-2">📍 Usar minha localização atual</button>
+        </div>
                     <div class="border-t pt-4">
                         <label class="block text-sm font-medium text-gray-600 mb-2">Indicadores de Impacto</label>
                         <div class="space-y-2">
@@ -1516,25 +1707,238 @@ class LuminarApp {
     this.openModal("settings");
   }
 
+  // ========== ONBOARDING ==========
+  startOnboarding() {
+    this.onboardingStep = 0;
+    this.onboardingData = {
+      modo: null, // 'expresso' ou 'personalizado'
+    };
+    this.renderOnboardingScreen();
+  }
+
+  renderOnboardingScreen() {
+    const modal = document.getElementById("modal");
+    const content = document.getElementById("modalContent");
+    if (!modal || !content) return;
+
+    modal.classList.remove("hidden");
+
+    const steps = [
+      this.renderStepWelcome(),
+      this.renderStepIdentificacao(),
+      this.renderStepModo(),
+      this.renderStepConfirmacao(),
+    ];
+
+    const step = this.onboardingStep;
+    content.innerHTML = steps[step];
+
+    // Configura listeners específicos para cada step
+    this.bindOnboardingListeners(step, content);
+  }
+
+  bindOnboardingListeners(step, content) {
+    switch (step) {
+      case 0: // Welcome
+        document
+          .getElementById("btnComecar")
+          ?.addEventListener("click", () => this.nextOnboardingStep());
+        document
+          .getElementById("btnPular")
+          ?.addEventListener("click", () => this.finishOnboarding("expresso"));
+        break;
+      case 1: // Identificação
+        document
+          .getElementById("btnProximoIdent")
+          ?.addEventListener("click", async () => {
+            const nome = document
+              .getElementById("onboardVendedorNome")
+              .value.trim();
+            const loja = document
+              .getElementById("onboardLojaNome")
+              .value.trim();
+            const tipoVendedor = document.getElementById(
+              "onboardTipoVendedor",
+            ).value;
+            const horarioInicio = document.getElementById(
+              "onboardHorarioInicio",
+            ).value;
+
+            if (nome) this.currentUser.vendedorNome = nome;
+            if (loja) this.currentUser.lojaNome = loja;
+            this.currentUser.tipoVendedor = tipoVendedor;
+            this.currentUser.horarioInicio = horarioInicio;
+
+            // Atualiza no banco
+            await db.createUser(this.currentUser);
+            // Salva também em config para facilitar consultas futuras
+            await db.setConfig(this.currentUserId, "perfil_vendedor", {
+              tipoVendedor,
+              horarioInicio,
+            });
+            this.nextOnboardingStep();
+          });
+        break;
+      case 2: // Modo
+        document
+          .getElementById("btnModoExpresso")
+          ?.addEventListener("click", () => {
+            this.onboardingData.modo = "expresso";
+            this.nextOnboardingStep();
+          });
+        document
+          .getElementById("btnModoPersonalizado")
+          ?.addEventListener("click", () => {
+            this.onboardingData.modo = "personalizado";
+            this.nextOnboardingStep();
+          });
+        break;
+      case 3: // Confirmação
+        document
+          .getElementById("btnIrDashboard")
+          ?.addEventListener("click", () => {
+            if (this.onboardingData.modo === "expresso") {
+              this.finishOnboarding("expresso");
+            } else {
+              this.finishOnboarding("personalizado");
+            }
+          });
+        break;
+    }
+  }
+
+  nextOnboardingStep() {
+    this.onboardingStep++;
+    this.renderOnboardingScreen();
+  }
+
+  finishOnboarding(modo) {
+    localStorage.setItem("luminar_onboarding_completed", "true");
+    this.closeModal();
+
+    if (modo === "expresso") {
+      this.hideLoginScreenAndShowApp();
+      this.navigate("dashboard");
+    } else {
+      this.hideLoginScreenAndShowApp();
+      // Abre Configurações diretamente na aba Cardápio
+      this.openModal("settings", "cardapio");
+      this.showToast(
+        "Agora cadastre seus produtos na aba Cardápio. Depois ajuste as metas.",
+        "info",
+      );
+    }
+  }
+
+  // Métodos de renderização das telas (HTML)
+  renderStepWelcome() {
+    return `
+      <div class="p-5 text-center">
+        <span class="text-4xl mb-3 block">🍰</span>
+        <h2 class="text-xl font-bold text-gray-800 mb-2">Bem-vindo(a) ao Luminar!</h2>
+        <p class="text-gray-600 mb-6">Vamos configurar sua loja em 2 minutos?</p>
+        <button id="btnComecar" class="w-full btn-primary text-white py-3 rounded-xl font-semibold mb-2">Começar</button>
+        <button id="btnPular" class="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold">Pular (usar dados de exemplo)</button>
+      </div>
+    `;
+  }
+
+  renderStepIdentificacao() {
+    const tipoVendedor = this.currentUser?.tipoVendedor || "fixo";
+    const horarioInicio = this.currentUser?.horarioInicio || "16:00";
+
+    return `
+        <div class="p-5">
+            <h3 class="text-lg font-bold text-gray-800 mb-4">Conte-nos um pouco sobre você</h3>
+            <div class="mb-3">
+                <label class="block text-sm font-medium text-gray-600 mb-1">Seu nome (ou apelido)</label>
+                <input type="text" id="onboardVendedorNome" value="${this.escapeHtml(this.currentUser?.vendedorNome || "")}" placeholder="Ex: Ana" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm font-medium text-gray-600 mb-1">Nome da sua loja</label>
+                <input type="text" id="onboardLojaNome" value="${this.escapeHtml(this.currentUser?.lojaNome || "")}" placeholder="Ex: Doces da Ana" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div class="mb-3">
+                <label class="block text-sm font-medium text-gray-600 mb-1">Como você costuma vender?</label>
+                <select id="onboardTipoVendedor" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option value="fixo" ${tipoVendedor === "fixo" ? "selected" : ""}>🏪 Ponto fixo (barraca, loja, quiosque)</option>
+                    <option value="ambulante" ${tipoVendedor === "ambulante" ? "selected" : ""}>🚶 Ambulante (rota, isopor, porta a porta)</option>
+                </select>
+                <p class="text-xs text-gray-500 mt-1">Usado futuramente para mapas de calor e estatísticas.</p>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-600 mb-1">Horário habitual de início das vendas</label>
+                <input type="time" id="onboardHorarioInicio" value="${horarioInicio}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <button id="btnProximoIdent" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Próximo</button>
+        </div>
+    `;
+  }
+
+  renderStepModo() {
+    return `
+      <div class="p-5">
+        <h3 class="text-lg font-bold text-gray-800 mb-4">Escolha o modo de configuração</h3>
+        <div class="space-y-3">
+          <button id="btnModoExpresso" class="w-full p-4 bg-green-50 border border-green-200 rounded-xl text-left">
+            <div class="font-bold text-green-700 text-lg mb-1">🚀 Modo Expresso</div>
+            <div class="text-sm text-gray-600">Usar cardápio e metas padrão da Doçuras de Artemis. Você pode editar depois.</div>
+          </button>
+          <button id="btnModoPersonalizado" class="w-full p-4 bg-blue-50 border border-blue-200 rounded-xl text-left">
+            <div class="font-bold text-blue-700 text-lg mb-1">🛠️ Modo Personalizado</div>
+            <div class="text-sm text-gray-600">Configurar metas, produtos e preferências manualmente agora.</div>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  renderStepConfirmacao() {
+    const modo = this.onboardingData.modo;
+    const titulo = modo === "expresso" ? "Tudo pronto!" : "Modo Personalizado";
+    const descricao =
+      modo === "expresso"
+        ? "Seu app está configurado com os produtos e metas padrão. Você já pode começar a vender!"
+        : "Agora você pode definir suas metas e cadastrar seus produtos nas Configurações.";
+
+    return `
+      <div class="p-5 text-center">
+        <span class="text-4xl mb-3 block">🎉</span>
+        <h3 class="text-lg font-bold text-gray-800 mb-2">${titulo}</h3>
+        <p class="text-gray-600 mb-6">${descricao}</p>
+        <button id="btnIrDashboard" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Ir para o Dashboard</button>
+      </div>
+    `;
+  }
+
   async salvarConfigClima() {
     const cidade = document.getElementById("cidadeClima").value.trim();
     const usarClima = document.getElementById("indClima").checked;
     const usarDiaSemana = document.getElementById("indDiaSemana").checked;
 
-    // Se a cidade mudou, busca coordenadas via Nominatim
     let lat = this.climaConfig?.lat;
     let lon = this.climaConfig?.lon;
+
     if (cidade && cidade !== this.climaConfig?.cidade) {
-      try {
-        const coords = await weather.buscarCoordenadas(cidade);
-        if (coords) {
-          lat = coords.lat;
-          lon = coords.lon;
+      // Verifica se é coordenada (contém vírgula e números)
+      if (cidade.includes(",")) {
+        const partes = cidade.split(",").map((s) => parseFloat(s.trim()));
+        if (partes.length === 2 && !isNaN(partes[0]) && !isNaN(partes[1])) {
+          lat = partes[0];
+          lon = partes[1];
         }
-      } catch (e) {
-        console.warn(
-          "Não foi possível obter coordenadas, mantendo anteriores.",
-        );
+      } else {
+        try {
+          const coords = await weather.buscarCoordenadas(cidade);
+          if (coords) {
+            lat = coords.lat;
+            lon = coords.lon;
+          }
+        } catch (e) {
+          console.warn(
+            "Não foi possível obter coordenadas, mantendo anteriores.",
+          );
+        }
       }
     }
 
@@ -1747,6 +2151,65 @@ class LuminarApp {
     this.showToast("Produto removido.", "info");
     // Recarrega a lista no modal de configurações
     this.openModal("settings");
+  }
+  // Solicita permissão e obtém coordenadas atuais do dispositivo
+  async obterLocalizacaoAtual() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocalização não suportada pelo navegador."));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+          });
+        },
+        (error) => {
+          reject(error);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      );
+    });
+  }
+
+  setupHeaderMenu() {
+    const menuBtn = document.getElementById("headerMenuBtn");
+    const dropdown = document.getElementById("headerMenuDropdown");
+    if (!menuBtn || !dropdown) return;
+
+    // Toggle dropdown
+    menuBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle("hidden");
+    });
+
+    // Fecha ao clicar fora
+    document.addEventListener("click", () => {
+      dropdown.classList.add("hidden");
+    });
+
+    // Impede que cliques dentro do dropdown o fechem
+    dropdown.addEventListener("click", (e) => e.stopPropagation());
+
+    // Ações dos itens
+    document.getElementById("menuSync")?.addEventListener("click", () => {
+      dropdown.classList.add("hidden");
+      this.syncData();
+    });
+    document.getElementById("menuBackup")?.addEventListener("click", () => {
+      dropdown.classList.add("hidden");
+      this.exportData();
+    });
+    document.getElementById("menuSettings")?.addEventListener("click", () => {
+      dropdown.classList.add("hidden");
+      this.openSettings();
+    });
+    document.getElementById("menuLogout")?.addEventListener("click", () => {
+      dropdown.classList.add("hidden");
+      this.logout();
+    });
   }
 
   logout() {
