@@ -1,18 +1,32 @@
-// Weather API Integration - Open-Meteo (Free, no API key needed)
-// https://open-meteo.com/
+// =============================================================================
+// PROJETO DE ESTUDOS: Serviço de Clima (weather.js) – Luminar PWA
+// =============================================================================
+// Este módulo integra a aplicação com a API gratuita Open-Meteo, que fornece
+// previsão do tempo sem exigir chave de API. Ele também implementa:
+//
+//   • Cache local (localStorage) com duração configurável (30 min)
+//   • Fallback offline (dados padrão quando não há internet)
+//   • Conversão de códigos meteorológicos WMO para ícones e categorias
+//   • Geocodificação (via Open-Meteo e Nominatim) para coordenadas
+//   • Cálculo de impacto do clima nas vendas (usado pelo motor de mix)
+//
+// É um bom exemplo de como trabalhar com APIs externas de forma resiliente.
+// =============================================================================
 
 class WeatherService {
     constructor() {
         this.baseUrl = 'https://api.open-meteo.com/v1';
         this.geocodingUrl = 'https://geocoding-api.open-meteo.com/v1';
         this.cacheKey = 'weatherCache';
-        this.cacheDuration = 30 * 60 * 1000; // 30 minutes
+        this.cacheDuration = 30 * 60 * 1000; // 30 minutos
     }
 
-    // Get current weather and forecast
+    // ========== OBTENÇÃO DE CLIMA ==========
+    // Busca clima atual e previsão para 3 dias. Usa cache para reduzir
+    // chamadas à API e tem fallback completo para funcionamento offline.
     async getWeather(latitude = -22.9455, longitude = -43.3627) {
         try {
-            // Check cache first
+            // Verifica cache antes de chamar a API
             const cached = this.getCachedWeather();
             if (cached) {
                 console.log('Using cached weather data');
@@ -27,22 +41,23 @@ class WeatherService {
             const data = await response.json();
             const processed = this.processWeatherData(data);
             
-            // Cache the result
+            // Salva no cache local
             this.cacheWeather(processed);
             
             return processed;
         } catch (error) {
             console.error('Weather fetch error:', error);
-            // Return cached data if available, even if expired
+            // Se falhar, tenta usar cache mesmo vencido
             const cached = this.getCachedWeather(true);
             if (cached) return cached;
             
-            // Return fallback data
+            // Fallback final: dados inventados para não quebrar a aplicação
             return this.getFallbackWeather();
         }
     }
 
-    // Process raw API data into usable format
+    // ========== PROCESSAMENTO DOS DADOS ==========
+    // Transforma o JSON da API em um formato mais amigável para o resto da app.
     processWeatherData(data) {
         const current = data.current;
         const daily = data.daily;
@@ -67,9 +82,9 @@ class WeatherService {
         };
     }
 
-    // Convert WMO weather code to readable condition
+    // ========== CONVERSÃO DE CÓDIGO WMO ==========
+    // Mapeia os códigos padronizados da OMM para nome, ícone e categoria.
     getWeatherCondition(code) {
-        // WMO Weather interpretation codes
         const conditions = {
             0: { name: 'Céu limpo', icon: '☀️', category: 'sol' },
             1: { name: 'Principalmente limpo', icon: '🌤️', category: 'sol' },
@@ -97,7 +112,7 @@ class WeatherService {
         return conditions[code] || { name: 'Desconhecido', icon: '❓', category: 'nublado' };
     }
 
-    // Cache weather data
+    // ========== CONTROLE DE CACHE ==========
     cacheWeather(data) {
         const cacheData = {
             data: data,
@@ -106,7 +121,6 @@ class WeatherService {
         localStorage.setItem(this.cacheKey, JSON.stringify(cacheData));
     }
 
-    // Get cached weather data
     getCachedWeather(ignoreExpiry = false) {
         try {
             const cached = localStorage.getItem(this.cacheKey);
@@ -118,14 +132,14 @@ class WeatherService {
             if (!ignoreExpiry && age > this.cacheDuration) return null;
             
             cacheData.data.cached = true;
-            cacheData.data.cacheAge = Math.round(age / 60000); // minutes
+            cacheData.data.cacheAge = Math.round(age / 60000); // idade em minutos
             return cacheData.data;
         } catch (e) {
             return null;
         }
     }
 
-    // Fallback weather data when offline
+    // Fallback usado quando não há internet nem cache disponível.
     getFallbackWeather() {
         return {
             current: {
@@ -142,7 +156,8 @@ class WeatherService {
         };
     }
 
-    // Search for city coordinates
+    // ========== GEOLOCALIZAÇÃO ==========
+    // Busca coordenadas de uma cidade usando a API de geocodificação do Open-Meteo.
     async searchCity(query) {
         try {
             const url = `${this.geocodingUrl}/search?name=${encodeURIComponent(query)}&count=5&language=pt&format=json`;
@@ -157,24 +172,27 @@ class WeatherService {
         }
     }
 
+    // Alternativa usando Nominatim (OpenStreetMap), caso o Open-Meteo não encontre.
     async buscarCoordenadas(cidade) {
-    try {
-        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cidade)}&format=json&limit=1`;
-        const response = await fetch(url);
-        const data = await response.json();
-        if (data && data.length > 0) {
-            return {
-                lat: parseFloat(data[0].lat),
-                lon: parseFloat(data[0].lon)
-            };
+        try {
+            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cidade)}&format=json&limit=1`;
+            const response = await fetch(url);
+            const data = await response.json();
+            if (data && data.length > 0) {
+                return {
+                    lat: parseFloat(data[0].lat),
+                    lon: parseFloat(data[0].lon)
+                };
+            }
+        } catch (e) {
+            console.error("Erro ao buscar coordenadas:", e);
         }
-    } catch (e) {
-        console.error("Erro ao buscar coordenadas:", e);
+        return null;
     }
-    return null;
-}
 
-    // Get weather impact on sales (for mix suggestion)
+    // ========== IMPACTO DO CLIMA NAS VENDAS ==========
+    // Retorna fatores de ajuste por categoria de produto com base no clima.
+    // Ex.: calor aumenta sacolés e bebidas; chuva reduz drasticamente.
     getWeatherImpact(weather) {
         const condition = weather.current.condition.category;
         const temp = weather.current.temperature;
@@ -188,7 +206,7 @@ class WeatherService {
         
         let impact = impacts[condition] || impacts.nublado;
         
-        // Temperature adjustments
+        // Ajustes adicionais pela temperatura
         if (temp >= 30) {
             impact.sacoles *= 1.3;
             impact.bebidas *= 1.2;
@@ -201,5 +219,5 @@ class WeatherService {
     }
 }
 
-// Create global instance
+// Instância global usada em toda a aplicação
 const weather = new WeatherService();
