@@ -1,3 +1,35 @@
+// ===================================================================
+// ESTUDO DE FUNCIONALIDADE FUTURA (NÃO IMPLEMENTADA)
+// ===================================================================
+// Este arquivo (api/feedback.js) representa um protótipo conceitual
+// de uma **serverless function** para a Vercel.
+//
+// IDEIA ORIGINAL:
+//   Servir como proxy seguro para a API Anthropic (Claude), gerando
+//   feedback personalizado sobre os registros de venda do dia.
+//   A função seria invocada pelo frontend quando o usuário solicitasse
+//   uma análise automática do seu desempenho.
+//
+// STATUS:
+//   ❌ NÃO está em produção.
+//   ❌ NÃO foi testada nem integrada ao fluxo principal da aplicação.
+//   ⚠️ É um esboço de arquitetura que dependia de:
+//        - Assinatura da API Anthropic (paga)
+//        - Deploy na Vercel com variável de ambiente ANTHROPIC_API_KEY
+//        - Configuração de CORS e domínio personalizado
+//
+// POR QUE ESTÁ AQUI?
+//   Para estudo da arquitetura de uma PWA com backend serverless,
+//   mostrando como isolar chaves de API no servidor (evitando
+//   exposição no frontend) e como estruturar uma integração com IA.
+//
+// Se um dia essa feature for retomada, este arquivo servirá como
+// ponto de partida. Por ora, é apenas material de estudo.
+//
+// CONTEÚDO ORIGINAL DO ARQUIVO:
+// ===================================================================
+
+/*
 // api/feedback.js — Vercel Serverless Function
 // Proxy para a Anthropic API (mantém a API key segura no servidor)
 // Configurar: ANTHROPIC_API_KEY nas Environment Variables do Vercel
@@ -79,3 +111,4 @@ Não inclua markdown, backticks, nem nenhum texto fora do JSON.`,
         return res.status(500).json({ error: 'Erro interno no servidor' });
     }
 }
+*/
