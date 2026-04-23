@@ -1,8 +1,30 @@
-// Main Application Controller for Luminar PWA
-// Security-hardened version with XSS protection and null safety
+// =============================================================================
+// PROJETO DE ESTUDOS: Controlador Principal (app.js) – Luminar PWA
+// =============================================================================
+// Este é o cérebro da aplicação. A classe LuminarApp gerencia:
+//
+// • Ciclo de vida: autenticação → onboarding → operação diária
+// • Navegação SPA simulada (sem recarregar a página)
+// • Renderização dinâmica de dashboards, formulários e relatórios
+// • Persistência offline via IndexedDB (módulo db.js)
+// • Sugestão inteligente de mix de produtos (mixEngine.js)
+// • Integração com clima (weather.js)
+// • Exportação de dados (JSON e Markdown para Obsidian)
+// • Tratamento de erros e feedback ao usuário (toasts)
+//
+// Padrões de estudo presentes:
+//   - Programação defensiva (safeNumber, escapeHtml)
+//   - Prevenção de XSS com sanitização
+//   - Delegação de eventos em containers dinâmicos
+//   - Uso de <details> para accordion nativo
+//   - Chart.js com instâncias reutilizáveis
+//   - Service Worker update flow
+//   - Onboarding passo a passo com modal
+// =============================================================================
 
 class LuminarApp {
   constructor() {
+    // Estado global da aplicação
     this.currentPage = "dashboard";
     this.currentUserId = null;
     this.currentUser = null;
@@ -10,13 +32,13 @@ class LuminarApp {
     this.metas = {};
     this.regrasMix = [];
     this.weatherData = null;
-    this.chartInstances = {};
+    this.chartInstances = {};   // Guarda instâncias Chart.js para evitar memory leak
     this.initialized = false;
   }
 
   // === UTILITÁRIOS DE SEGURANÇA ===
 
-  // Previne XSS ao inserir texto no HTML
+  // Previne XSS ao escapar HTML antes de inserir no DOM
   escapeHtml(text) {
     if (typeof text !== "string") return "";
     const div = document.createElement("div");
@@ -24,7 +46,7 @@ class LuminarApp {
     return div.innerHTML;
   }
 
-  // Sanitiza texto para Markdown (Obsidian export)
+  // Sanitiza texto para exportação Markdown (remove caracteres perigosos)
   sanitizeForMarkdown(text) {
     return String(text || "")
       .replace(/"/g, '\\"')
@@ -33,7 +55,7 @@ class LuminarApp {
       .trim();
   }
 
-  // Valida e converte números com fallback seguro
+  // Conversão segura de string para número com fallback
   safeNumber(value, fallback = 0) {
     const num = parseFloat(value);
     return isNaN(num) || num < 0 ? fallback : num;
@@ -43,12 +65,13 @@ class LuminarApp {
 
   async init() {
     try {
+      // Verifica se o módulo de banco de dados foi carregado
       if (typeof db === "undefined") throw new Error("Database não carregado");
       console.log("Iniciando Luminar...");
       await db.init();
       console.log("DB inicializado");
 
-      // Verifica se já existe usuário logado
+      // Restaura sessão se existir
       const savedUserId = localStorage.getItem("luminar_userId");
       if (savedUserId) {
         const users = await db.getAllUsers();
@@ -66,26 +89,28 @@ class LuminarApp {
           localStorage.removeItem("luminar_userId");
         }
       }
+
       // Se não logado, mostra tela de login
       this.showLoginScreen();
       this.setupConnectivityListeners();
-      // Listener para atualização do Service Worker
+
+      // Configura listeners para atualização do Service Worker
       if ("serviceWorker" in navigator) {
+        // Quando um novo SW assume o controle
         navigator.serviceWorker.addEventListener("controllerchange", () => {
           console.log("🔄 Nova versão detectada! Recarregando...");
           window.location.reload();
         });
 
+        // Mensagens do SW (ex.: SW_ACTIVATED)
         navigator.serviceWorker.addEventListener("message", (event) => {
           if (event.data && event.data.type === "SW_ACTIVATED") {
-            console.log(
-              "🔄 SW assumiu controle. Recarregando para aplicar nova versão...",
-            );
+            console.log("🔄 SW assumiu controle. Recarregando para aplicar nova versão...");
             window.location.reload();
           }
         });
 
-        // Verifica se há uma atualização pendente
+        // Detecta nova versão em instalação e pergunta se quer atualizar
         navigator.serviceWorker.ready.then((registration) => {
           registration.addEventListener("updatefound", () => {
             const newWorker = registration.installing;
@@ -94,11 +119,8 @@ class LuminarApp {
                 newWorker.state === "installed" &&
                 navigator.serviceWorker.controller
               ) {
-                // Nova versão instalada e pronta. Pergunta se quer atualizar agora?
                 if (
-                  confirm(
-                    "Uma nova versão do Luminar está disponível! Deseja atualizar agora?",
-                  )
+                  confirm("Uma nova versão do Luminar está disponível! Deseja atualizar agora?")
                 ) {
                   newWorker.postMessage({ type: "SKIP_WAITING" });
                 }
@@ -109,14 +131,11 @@ class LuminarApp {
       }
     } catch (error) {
       console.error("❌ Initialization error:", error);
-      this.showToast(
-        "Erro crítico. Recarregue a página (Ctrl+Shift+R)",
-        "error",
-      );
+      this.showToast("Erro crítico. Recarregue a página (Ctrl+Shift+R)", "error");
     }
   }
 
-  // Setup modal event listeners (após DOM estar pronto)
+  // Configura listeners para fechar modal ao clicar fora
   setupModalListeners() {
     const modal = document.getElementById("modal");
     if (modal) {
@@ -128,6 +147,7 @@ class LuminarApp {
     }
   }
 
+  // Atualiza a data formatada no header
   updateDateDisplay() {
     const hoje = new Date();
     const options = {
@@ -140,6 +160,7 @@ class LuminarApp {
     if (el) el.textContent = hoje.toLocaleDateString("pt-BR", options);
   }
 
+  // Monitora conectividade (online/offline)
   setupConnectivityListeners() {
     window.addEventListener("online", () => {
       document.body.classList.remove("offline");
@@ -156,6 +177,8 @@ class LuminarApp {
       document.body.classList.add("offline");
     }
   }
+
+  // Exibe a tela de login (esconde header e nav)
   showLoginScreen() {
     const mainContent = document.getElementById("mainContent");
     const header = document.querySelector("header");
@@ -170,51 +193,48 @@ class LuminarApp {
     }
 
     mainContent.innerHTML = `
-        <div class="flex items-center justify-center min-h-screen bg-gray-100 p-4">
-            <div class="bg-white rounded-2xl p-6 w-full max-w-md card-shadow">
-                <h1 class="text-2xl font-bold text-center text-purple-700 mb-6">Luminar</h1>
-                <div id="loginFormContainer">
-                    <form id="loginForm">
-                        <input type="text" id="loginUsername" placeholder="Usuário" class="w-full mb-3 px-4 py-2 border rounded-lg">
-                        <input type="password" id="loginPassword" placeholder="Senha" class="w-full mb-3 px-4 py-2 border rounded-lg">
-                        <button type="submit" class="w-full btn-primary text-white py-2 rounded-lg font-semibold">Entrar</button>
-                    </form>
-                    <p class="text-center text-sm text-gray-500 mt-4">
-                        Não tem conta? <button id="showRegisterBtn" class="text-purple-600 font-medium">Cadastrar</button>
-                    </p>
-                </div>
-                <div id="registerFormContainer" style="display:none;">
-                    <form id="registerForm">
-                        <input type="text" id="regUsername" placeholder="Usuário" class="w-full mb-3 px-4 py-2 border rounded-lg" required>
-                        <input type="password" id="regPassword" placeholder="Senha" class="w-full mb-3 px-4 py-2 border rounded-lg" required>
-                        <input type="text" id="regLojaNome" placeholder="Nome da Loja" class="w-full mb-3 px-4 py-2 border rounded-lg" required>
-                        <input type="text" id="regVendedorNome" placeholder="Seu Nome" class="w-full mb-3 px-4 py-2 border rounded-lg" required>
-                        <button type="submit" class="w-full btn-primary text-white py-2 rounded-lg font-semibold">Cadastrar</button>
-                    </form>
-                    <p class="text-center text-sm text-gray-500 mt-4">
-                        Já tem conta? <button id="showLoginBtn" class="text-purple-600 font-medium">Entrar</button>
-                    </p>
-                </div>
-            </div>
+      <div class="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md card-shadow">
+          <h1 class="text-2xl font-bold text-center text-purple-700 mb-6">Luminar</h1>
+          <div id="loginFormContainer">
+            <form id="loginForm">
+              <input type="text" id="loginUsername" placeholder="Usuário" class="w-full mb-3 px-4 py-2 border rounded-lg">
+              <input type="password" id="loginPassword" placeholder="Senha" class="w-full mb-3 px-4 py-2 border rounded-lg">
+              <button type="submit" class="w-full btn-primary text-white py-2 rounded-lg font-semibold">Entrar</button>
+            </form>
+            <p class="text-center text-sm text-gray-500 mt-4">
+              Não tem conta? <button id="showRegisterBtn" class="text-purple-600 font-medium">Cadastrar</button>
+            </p>
+          </div>
+          <div id="registerFormContainer" style="display:none;">
+            <form id="registerForm">
+              <input type="text" id="regUsername" placeholder="Usuário" class="w-full mb-3 px-4 py-2 border rounded-lg" required>
+              <input type="password" id="regPassword" placeholder="Senha" class="w-full mb-3 px-4 py-2 border rounded-lg" required>
+              <input type="text" id="regLojaNome" placeholder="Nome da Loja" class="w-full mb-3 px-4 py-2 border rounded-lg" required>
+              <input type="text" id="regVendedorNome" placeholder="Seu Nome" class="w-full mb-3 px-4 py-2 border rounded-lg" required>
+              <button type="submit" class="w-full btn-primary text-white py-2 rounded-lg font-semibold">Cadastrar</button>
+            </form>
+            <p class="text-center text-sm text-gray-500 mt-4">
+              Já tem conta? <button id="showLoginBtn" class="text-purple-600 font-medium">Entrar</button>
+            </p>
+          </div>
         </div>
+      </div>
     `;
 
-    document
-      .getElementById("loginForm")
-      .addEventListener("submit", (e) => this.doLogin(e));
+    document.getElementById("loginForm").addEventListener("submit", (e) => this.doLogin(e));
     document.getElementById("showRegisterBtn").addEventListener("click", () => {
       document.getElementById("loginFormContainer").style.display = "none";
       document.getElementById("registerFormContainer").style.display = "block";
     });
-    document
-      .getElementById("registerForm")
-      .addEventListener("submit", (e) => this.doRegister(e));
+    document.getElementById("registerForm").addEventListener("submit", (e) => this.doRegister(e));
     document.getElementById("showLoginBtn").addEventListener("click", () => {
       document.getElementById("registerFormContainer").style.display = "none";
       document.getElementById("loginFormContainer").style.display = "block";
     });
   }
 
+  // Autenticação do usuário
   async doLogin(event) {
     event.preventDefault();
     const username = document.getElementById("loginUsername").value.trim();
@@ -235,14 +255,13 @@ class LuminarApp {
     this.hideLoginScreenAndShowApp();
   }
 
+  // Cadastro de novo usuário + onboarding
   async doRegister(event) {
     event.preventDefault();
     const username = document.getElementById("regUsername").value.trim();
     const password = document.getElementById("regPassword").value;
     const lojaNome = document.getElementById("regLojaNome").value.trim();
-    const vendedorNome = document
-      .getElementById("regVendedorNome")
-      .value.trim();
+    const vendedorNome = document.getElementById("regVendedorNome").value.trim();
 
     const existing = await db.getUserByUsername(username);
     if (existing) {
@@ -266,12 +285,11 @@ class LuminarApp {
     this.currentUserId = userId;
     this.currentUser = newUser;
     localStorage.setItem("luminar_userId", userId);
-    await this.loadUserData(); // Carrega produtos e metas padrão
-    this.startOnboarding(); // Novo método
-    //document.getElementById("registerFormContainer").style.display = "none";
-    //document.getElementById("loginFormContainer").style.display = "block";
+    await this.loadUserData();
+    this.startOnboarding();
   }
 
+  // Carrega produtos, metas, clima e regras do banco
   async loadUserData() {
     this.metas = (await db.getConfig(this.currentUserId, "metas")) || {
       survival: 110,
@@ -280,32 +298,25 @@ class LuminarApp {
       semanal: 750,
       mensal: 3000,
     };
-    this.climaConfig = (await db.getConfig(
-      this.currentUserId,
-      "climaConfig",
-    )) || {
+    this.climaConfig = (await db.getConfig(this.currentUserId, "climaConfig")) || {
       cidade: "Rio de Janeiro",
       lat: -22.9455,
       lon: -43.3627,
     };
-    // Em loadUserData, após carregar climaConfig:
     this.weatherData = await weather.getWeather(
       this.climaConfig?.lat || -22.9455,
       this.climaConfig?.lon || -43.3627,
     );
-    this.indicadores = (await db.getConfig(
-      this.currentUserId,
-      "indicadores",
-    )) || {
+    this.indicadores = (await db.getConfig(this.currentUserId, "indicadores")) || {
       usarClima: true,
       usarDiaSemana: true,
     };
     this.mixValorMinimo =
       (await db.getConfig(this.currentUserId, "mixValorMinimo")) || 250;
     this.produtos = (await db.getConfig(this.currentUserId, "produtos")) || [];
-    this.regrasMix =
-      (await db.getConfig(this.currentUserId, "regrasMix")) || [];
+    this.regrasMix = (await db.getConfig(this.currentUserId, "regrasMix")) || [];
 
+    // Se não há produtos ou regras, carrega os padrões
     if (this.produtos.length === 0) {
       this.produtos = db.getDefaultProdutos();
       await db.setConfig(this.currentUserId, "produtos", this.produtos);
@@ -319,13 +330,13 @@ class LuminarApp {
     this.navigate("dashboard");
   }
 
+  // Mostra o app (header e nav) após login
   hideLoginScreenAndShowApp() {
     const header = document.querySelector("header");
     const nav = document.querySelector("nav");
     if (header) {
       header.classList.remove("nav-hidden");
       header.classList.add("nav-visible");
-      // Atualiza o título com o nome da loja
       const lojaNome = this.currentUser?.lojaNome || "Luminar";
       const h1 = header.querySelector("h1");
       if (h1) h1.textContent = lojaNome;
@@ -335,8 +346,10 @@ class LuminarApp {
       nav.classList.add("nav-visible");
     }
   }
+
   // === NAVEGAÇÃO ===
 
+  // Simula SPA: troca o conteúdo do main e atualiza a tab ativa
   navigate(page) {
     this.currentPage = page;
 
@@ -379,6 +392,7 @@ class LuminarApp {
     const vendasSemana = this.calcularVendasSemana(registros);
     const vendasMes = this.calcularVendasMes(registros);
 
+    // Sugestão de mix para hoje
     const sugestaoMix = await mixEngine.generateSuggestion({
       data: hoje,
       diaSemana: new Date().toLocaleDateString("pt-BR", { weekday: "long" }),
@@ -396,70 +410,68 @@ class LuminarApp {
       metas.ideal > 0 ? Math.min(100, (valorDia / metas.ideal) * 100) : 0;
 
     container.innerHTML = `
-            <div class="bg-white rounded-2xl p-5 card-shadow">
-                <div class="flex justify-between items-center mb-3">
-                    <h2 class="font-semibold text-gray-700">Meta Diária</h2>
-                    <span class="text-sm text-gray-500">${registroHoje ? "✅ Registrado" : "⏳ Pendente"}</span>
-                </div>
-                <div class="text-center mb-4">
-                    <span class="text-3xl font-bold text-gray-800">R$ ${valorDia.toFixed(2)}</span>
-                    <span class="text-gray-500">/ R$ ${(metas.ideal ?? 260).toFixed(2)}</span>
-                </div>
-                <div class="h-3 bg-gray-200 rounded-full overflow-hidden mb-4">
-                    <div class="h-full progress-gradient rounded-full transition-all duration-500" 
-                         style="width: ${progressPct}%"></div>
-                </div>
-                <div class="grid grid-cols-3 gap-2 text-center">
-                    <div class="bg-yellow-100 rounded-lg p-2">
-                        <div class="text-xs text-yellow-700 font-medium">Sobrevivência</div>
-                        <div class="text-sm font-bold text-yellow-800">R$ ${metas.survival ?? 110}</div>
-                    </div>
-                    <div class="bg-orange-100 rounded-lg p-2">
-                        <div class="text-xs text-orange-700 font-medium">Confortável</div>
-                        <div class="text-sm font-bold text-orange-800">R$ ${metas.comfortable ?? 150}</div>
-                    </div>
-                    <div class="bg-green-100 rounded-lg p-2">
-                        <div class="text-xs text-green-700 font-medium">Ideal</div>
-                        <div class="text-sm font-bold text-green-800">R$ ${metas.ideal ?? 260}</div>
-                    </div>
-                </div>
-            </div>
+      <div class="bg-white rounded-2xl p-5 card-shadow">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="font-semibold text-gray-700">Meta Diária</h2>
+          <span class="text-sm text-gray-500">${registroHoje ? "✅ Registrado" : "⏳ Pendente"}</span>
+        </div>
+        <div class="text-center mb-4">
+          <span class="text-3xl font-bold text-gray-800">R$ ${valorDia.toFixed(2)}</span>
+          <span class="text-gray-500">/ R$ ${(metas.ideal ?? 260).toFixed(2)}</span>
+        </div>
+        <div class="h-3 bg-gray-200 rounded-full overflow-hidden mb-4">
+          <div class="h-full progress-gradient rounded-full transition-all duration-500" 
+               style="width: ${progressPct}%"></div>
+        </div>
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div class="bg-yellow-100 rounded-lg p-2">
+            <div class="text-xs text-yellow-700 font-medium">Sobrevivência</div>
+            <div class="text-sm font-bold text-yellow-800">R$ ${metas.survival ?? 110}</div>
+          </div>
+          <div class="bg-orange-100 rounded-lg p-2">
+            <div class="text-xs text-orange-700 font-medium">Confortável</div>
+            <div class="text-sm font-bold text-orange-800">R$ ${metas.comfortable ?? 150}</div>
+          </div>
+          <div class="bg-green-100 rounded-lg p-2">
+            <div class="text-xs text-green-700 font-medium">Ideal</div>
+            <div class="text-sm font-bold text-green-800">R$ ${metas.ideal ?? 260}</div>
+          </div>
+        </div>
+      </div>
 
-            <div class="bg-white rounded-2xl p-5 card-shadow">
-    <div class="flex items-center justify-between mb-3">
-        <h2 class="font-semibold text-gray-700">Sugestão de Mix</h2>
-        <div class="flex gap-1">
+      <div class="bg-white rounded-2xl p-5 card-shadow">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-gray-700">Sugestão de Mix</h2>
+          <div class="flex gap-1">
             <button id="tabMixHoje" class="px-3 py-1 text-sm rounded-full bg-purple-100 text-purple-700 font-medium">Hoje</button>
             <button id="tabMixAmanha" class="px-3 py-1 text-sm rounded-full bg-gray-100 text-gray-600 font-medium">Amanhã</button>
+          </div>
         </div>
-    </div>
-    <div id="mixContentContainer">
-        <!-- Conteúdo carregado dinamicamente -->
-    </div>
-</div>
+        <div id="mixContentContainer"></div>
+      </div>
 
-            <div class="bg-white rounded-2xl p-5 card-shadow">
-                <h2 class="font-semibold text-gray-700 mb-4">Vendas da Semana</h2>
-                <div class="h-48"><canvas id="weeklyChart"></canvas></div>
-            </div>
+      <div class="bg-white rounded-2xl p-5 card-shadow">
+        <h2 class="font-semibold text-gray-700 mb-4">Vendas da Semana</h2>
+        <div class="h-48"><canvas id="weeklyChart"></canvas></div>
+      </div>
 
-            <div class="grid grid-cols-2 gap-4">
-    <div class="bg-white rounded-2xl p-4 card-shadow">
-        <div class="text-sm text-gray-500 mb-1">Esta Semana</div>
-        <div class="text-xl font-bold text-gray-800">R$ ${vendasSemana.toFixed(2)}</div>
-        <div class="text-xs text-gray-400">Meta: R$ ${(metas.semanal ?? 750).toFixed(2)}</div>
-    </div>
-    <div class="bg-white rounded-2xl p-4 card-shadow">
-        <div class="text-sm text-gray-500 mb-1">Este Mês</div>
-        <div class="text-xl font-bold text-gray-800">R$ ${vendasMes.toFixed(2)}</div>
-        <div class="text-xs text-gray-400">Meta: R$ ${(metas.mensal ?? 3000).toFixed(2)}</div>
-    </div>
-</div>
-        `;
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="text-sm text-gray-500 mb-1">Esta Semana</div>
+          <div class="text-xl font-bold text-gray-800">R$ ${vendasSemana.toFixed(2)}</div>
+          <div class="text-xs text-gray-400">Meta: R$ ${(metas.semanal ?? 750).toFixed(2)}</div>
+        </div>
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="text-sm text-gray-500 mb-1">Este Mês</div>
+          <div class="text-xl font-bold text-gray-800">R$ ${vendasMes.toFixed(2)}</div>
+          <div class="text-xs text-gray-400">Meta: R$ ${(metas.mensal ?? 3000).toFixed(2)}</div>
+        </div>
+      </div>
+    `;
 
     this.renderWeeklyChart(registros);
 
-    // 🔥 Carrega o mix na aba ativa (Hoje por padrão)
+    // Carrega o mix na aba ativa (Hoje por padrão)
     const mixContainer = document.getElementById("mixContentContainer");
     if (mixContainer) {
       const carregarMix = async (data, targetContainer) => {
@@ -480,68 +492,44 @@ class LuminarApp {
           }
         }
 
-        const sugestao = await this.getMixSuggestionForDate(
-          data,
-          climaParaData,
-        );
+        const sugestao = await this.getMixSuggestionForDate(data, climaParaData);
         targetContainer.innerHTML = `
-                <p class="text-sm text-gray-600 mb-3">
-                    ${climaParaData?.current?.condition?.name || "Clima"} • ${climaParaData?.current?.temperature ?? "--"}°C
-                    ${climaParaData?.cached ? "(cache)" : ""}
-                </p>
-                <p class="text-xs text-gray-500 mb-3">${this.escapeHtml(sugestao.explicacao || "")}</p>
-                <div class="space-y-2 mb-4">${this.renderMixPreview(sugestao.mix)}</div>
-                <div class="flex justify-between items-center text-sm">
-                    <span class="text-gray-600">Total: <strong>${sugestao.totalItens ?? 0}</strong> itens</span>
-                    <span class="text-green-600">Estimativa: R$ ${sugestao.estimativaFaturamento ?? 0}</span>
-                </div>
-            `;
+          <p class="text-sm text-gray-600 mb-3">
+            ${climaParaData?.current?.condition?.name || "Clima"} • ${climaParaData?.current?.temperature ?? "--"}°C
+            ${climaParaData?.cached ? "(cache)" : ""}
+          </p>
+          <p class="text-xs text-gray-500 mb-3">${this.escapeHtml(sugestao.explicacao || "")}</p>
+          <div class="space-y-2 mb-4">${this.renderMixPreview(sugestao.mix)}</div>
+          <div class="flex justify-between items-center text-sm">
+            <span class="text-gray-600">Total: <strong>${sugestao.totalItens ?? 0}</strong> itens</span>
+            <span class="text-green-600">Estimativa: R$ ${sugestao.estimativaFaturamento ?? 0}</span>
+          </div>
+        `;
       };
 
       await carregarMix(hoje, mixContainer);
 
-      // Listeners para as abas
-      document
-        .getElementById("tabMixHoje")
-        ?.addEventListener("click", async () => {
-          document
-            .getElementById("tabMixHoje")
-            .classList.add("bg-purple-100", "text-purple-700");
-          document
-            .getElementById("tabMixHoje")
-            .classList.remove("bg-gray-100", "text-gray-600");
-          document
-            .getElementById("tabMixAmanha")
-            .classList.add("bg-gray-100", "text-gray-600");
-          document
-            .getElementById("tabMixAmanha")
-            .classList.remove("bg-purple-100", "text-purple-700");
-          await carregarMix(hoje, mixContainer);
-        });
+      // Listeners para alternar entre abas Hoje/Amanhã
+      document.getElementById("tabMixHoje")?.addEventListener("click", async () => {
+        document.getElementById("tabMixHoje").classList.add("bg-purple-100", "text-purple-700");
+        document.getElementById("tabMixHoje").classList.remove("bg-gray-100", "text-gray-600");
+        document.getElementById("tabMixAmanha").classList.add("bg-gray-100", "text-gray-600");
+        document.getElementById("tabMixAmanha").classList.remove("bg-purple-100", "text-purple-700");
+        await carregarMix(hoje, mixContainer);
+      });
 
-      document
-        .getElementById("tabMixAmanha")
-        ?.addEventListener("click", async () => {
-          document
-            .getElementById("tabMixAmanha")
-            .classList.add("bg-purple-100", "text-purple-700");
-          document
-            .getElementById("tabMixAmanha")
-            .classList.remove("bg-gray-100", "text-gray-600");
-          document
-            .getElementById("tabMixHoje")
-            .classList.add("bg-gray-100", "text-gray-600");
-          document
-            .getElementById("tabMixHoje")
-            .classList.remove("bg-purple-100", "text-purple-700");
-          const amanha = new Date(Date.now() + 86400000)
-            .toISOString()
-            .split("T")[0];
-          await carregarMix(amanha, mixContainer);
-        });
+      document.getElementById("tabMixAmanha")?.addEventListener("click", async () => {
+        document.getElementById("tabMixAmanha").classList.add("bg-purple-100", "text-purple-700");
+        document.getElementById("tabMixAmanha").classList.remove("bg-gray-100", "text-gray-600");
+        document.getElementById("tabMixHoje").classList.add("bg-gray-100", "text-gray-600");
+        document.getElementById("tabMixHoje").classList.remove("bg-purple-100", "text-purple-700");
+        const amanha = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+        await carregarMix(amanha, mixContainer);
+      });
     }
   }
 
+  // Renderiza preview do mix agrupado por categoria
   renderMixPreview(mix) {
     const categorias = { bolos: [], brownies: [], brigadeiros: [], outros: [] };
 
@@ -550,12 +538,9 @@ class LuminarApp {
       const produto = this.produtos?.find((p) => p.id === id);
       if (!produto) continue;
 
-      if (produto.categoria === "bolos")
-        categorias.bolos.push({ nome: produto.nome, qtd });
-      else if (produto.categoria === "brownies")
-        categorias.brownies.push({ nome: produto.nome, qtd });
-      else if (produto.categoria === "brigadeiros")
-        categorias.brigadeiros.push({ nome: produto.nome, qtd });
+      if (produto.categoria === "bolos") categorias.bolos.push({ nome: produto.nome, qtd });
+      else if (produto.categoria === "brownies") categorias.brownies.push({ nome: produto.nome, qtd });
+      else if (produto.categoria === "brigadeiros") categorias.brigadeiros.push({ nome: produto.nome, qtd });
       else categorias.outros.push({ nome: produto.nome, qtd });
     }
 
@@ -573,17 +558,15 @@ class LuminarApp {
       html += `<div class="flex flex-wrap gap-1"><span class="text-xs font-medium text-gray-500">Brigadeiros:</span> ${categorias.brigadeiros.map((b) => renderBadge(b.nome, b.qtd, "purple")).join("")}</div>`;
     }
 
-    return (
-      html || '<span class="text-gray-400 text-sm">Nenhum item sugerido</span>'
-    );
+    return html || '<span class="text-gray-400 text-sm">Nenhum item sugerido</span>';
   }
 
+  // Gráfico de barras dos últimos 7 dias
   renderWeeklyChart(registros) {
     const canvas = document.getElementById("weeklyChart");
     if (!canvas || typeof Chart === "undefined") return;
 
-    const dias = [],
-      valores = [];
+    const dias = [], valores = [];
     for (let i = 6; i >= 0; i--) {
       const data = new Date();
       data.setDate(data.getDate() - i);
@@ -593,7 +576,7 @@ class LuminarApp {
       const totalDia =
         (registro?.fluxo?.pagosDia || 0) +
         (registro?.fluxo?.recebidosFiados || 0);
-        dias.push(diaLabel);
+      dias.push(diaLabel);
       valores.push(totalDia);
     }
 
@@ -628,7 +611,7 @@ class LuminarApp {
   // === REGISTRAR ===
 
   async renderRegistrar(container) {
-    // CORREÇÃO: Usar data local ao invés de UTC
+    // Data local (timezone São Paulo)
     const hoje = new Date()
       .toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })
       .split("/")
@@ -640,7 +623,7 @@ class LuminarApp {
     });
     const registroExistente = await db.getRegistro(hoje, this.currentUserId);
 
-    // Get mix suggestion for pre-fill
+    // Sugestão de mix para preencher o formulário
     const sugestaoMix = await mixEngine.generateSuggestion({
       data: hoje,
       diaSemana: diaSemana,
@@ -651,127 +634,116 @@ class LuminarApp {
     });
 
     container.innerHTML = `
-        <div class="bg-white rounded-2xl p-5 card-shadow">
-            <h2 class="font-semibold text-gray-700 mb-4">📓 Registro Diário</h2>
-            
-            <form id="registroForm">
-                <!-- Data e Dia -->
-                <div class="grid grid-cols-2 gap-3 mb-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Data</label>
-                        <input type="date" id="regData" value="${hoje}" required
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Dia</label>
-                        <input type="text" id="regDiaSemana" value="${diaSemana}" readonly
-                               class="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-500">
-                    </div>
-                </div>
+      <div class="bg-white rounded-2xl p-5 card-shadow">
+        <h2 class="font-semibold text-gray-700 mb-4">📓 Registro Diário</h2>
+        <form id="registroForm">
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-600 mb-1">Data</label>
+              <input type="date" id="regData" value="${hoje}" required
+                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-600 mb-1">Dia</label>
+              <input type="text" id="regDiaSemana" value="${diaSemana}" readonly
+                     class="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-500">
+            </div>
+          </div>
 
-                <!-- Fluxo do Dia -->
-                <div class="mb-4">
-                    <h3 class="font-medium text-gray-700 mb-2">💰 Fluxo do Dia</h3>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-sm text-gray-600 mb-1">🟢 Pagos (R$)</label>
-                            <input type="number" step="0.01" id="regPagos" required
-                                   value="${registroExistente?.fluxo?.pagosDia || ""}"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
-                        </div>
-                        <div>
-                            <label class="block text-sm text-gray-600 mb-1">🟡 Fiados (R$)</label>
-                            <input type="number" step="0.01" id="regFiados"
-                                   value="${registroExistente?.fluxo?.fiadosHoje || "0"}"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
-                        </div>
-                    </div>
-                    <div class="mt-2">
-                        <label class="block text-sm text-gray-600 mb-1">🔵 Recebidos de Fiados (R$)</label>
-                        <input type="number" step="0.01" id="regRecebidos"
-                               value="${registroExistente?.fluxo?.recebidosFiados || "0"}"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
-                    </div>
-                </div>
+          <div class="mb-4">
+            <h3 class="font-medium text-gray-700 mb-2">💰 Fluxo do Dia</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm text-gray-600 mb-1">🟢 Pagos (R$)</label>
+                <input type="number" step="0.01" id="regPagos" required
+                       value="${registroExistente?.fluxo?.pagosDia || ""}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+              </div>
+              <div>
+                <label class="block text-sm text-gray-600 mb-1">🟡 Fiados (R$)</label>
+                <input type="number" step="0.01" id="regFiados"
+                       value="${registroExistente?.fluxo?.fiadosHoje || "0"}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+              </div>
+            </div>
+            <div class="mt-2">
+              <label class="block text-sm text-gray-600 mb-1">🔵 Recebidos de Fiados (R$)</label>
+              <input type="number" step="0.01" id="regRecebidos"
+                     value="${registroExistente?.fluxo?.recebidosFiados || "0"}"
+                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+            </div>
+          </div>
 
-                <!-- Tempo Operacional -->
-                <div class="mb-4">
-                    <h3 class="font-medium text-gray-700 mb-2">⏳ Tempo Operacional</h3>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-sm text-gray-600 mb-1">Início</label>
-                            <input type="time" id="regInicio" required
-                                    value="${registroExistente?.tempoOperacional?.inicio || ""}"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
-                        </div>
-                        <div>
-                            <label class="block text-sm text-gray-600 mb-1">Fim</label>
-                            <input type="time" id="regFim" required
-                                   value="${registroExistente?.tempoOperacional?.fim || ""}"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
-                        </div>
-                    </div>
-                </div>
+          <div class="mb-4">
+            <h3 class="font-medium text-gray-700 mb-2">⏳ Tempo Operacional</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm text-gray-600 mb-1">Início</label>
+                <input type="time" id="regInicio" required
+                       value="${registroExistente?.tempoOperacional?.inicio || ""}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+              </div>
+              <div>
+                <label class="block text-sm text-gray-600 mb-1">Fim</label>
+                <input type="time" id="regFim" required
+                       value="${registroExistente?.tempoOperacional?.fim || ""}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+              </div>
+            </div>
+          </div>
 
-                <!-- Itens Vendidos -->
-                <div class="mb-4">
-                    <h3 class="font-medium text-gray-700 mb-2">🍰 Itens Vendidos</h3>
-                    <p class="text-xs text-gray-500 mb-2">Preencha: Levado → Vendido</p>
-                    
-                    ${this.renderItensForm(sugestaoMix.mix, registroExistente?.itensVendidos)}
-                </div>
+          <div class="mb-4">
+            <h3 class="font-medium text-gray-700 mb-2">🍰 Itens Vendidos</h3>
+            <p class="text-xs text-gray-500 mb-2">Preencha: Levado → Vendido</p>
+            ${this.renderItensForm(sugestaoMix.mix, registroExistente?.itensVendidos)}
+          </div>
 
-                <!-- Clima -->
-                <div class="mb-4">
-                    <h3 class="font-medium text-gray-700 mb-2">🌡️ Clima</h3>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-sm text-gray-600 mb-1">Condição</label>
-                            <select id="regClimaCondicao" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                                <option value="sol" ${this.weatherData?.current?.condition?.category === "sol" ? "selected" : ""}>☀️ Sol</option>
-                                <option value="nublado" ${this.weatherData?.current?.condition?.category === "nublado" ? "selected" : ""}>☁️ Nublado</option>
-                                <option value="chuva" ${this.weatherData?.current?.condition?.category === "chuva" ? "selected" : ""}>🌧️ Chuva</option>
-                                <option value="tempestade" ${this.weatherData?.current?.condition?.category === "tempestade" ? "selected" : ""}>⛈️ Tempestade</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm text-gray-600 mb-1">Temperatura (°C)</label>
-                            <input type="number" id="regClimaTemp" step="1" 
-                                value="${Math.round(this.weatherData?.current?.temperature || 25)}"
-                                class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                        </div>
-                    </div>
-                </div>
+          <div class="mb-4">
+            <h3 class="font-medium text-gray-700 mb-2">🌡️ Clima</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm text-gray-600 mb-1">Condição</label>
+                <select id="regClimaCondicao" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                  <option value="sol" ${this.weatherData?.current?.condition?.category === "sol" ? "selected" : ""}>☀️ Sol</option>
+                  <option value="nublado" ${this.weatherData?.current?.condition?.category === "nublado" ? "selected" : ""}>☁️ Nublado</option>
+                  <option value="chuva" ${this.weatherData?.current?.condition?.category === "chuva" ? "selected" : ""}>🌧️ Chuva</option>
+                  <option value="tempestade" ${this.weatherData?.current?.condition?.category === "tempestade" ? "selected" : ""}>⛈️ Tempestade</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm text-gray-600 mb-1">Temperatura (°C)</label>
+                <input type="number" id="regClimaTemp" step="1" 
+                       value="${Math.round(this.weatherData?.current?.temperature || 25)}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+              </div>
+            </div>
+          </div>
 
-                <!-- Observações -->
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-600 mb-1">📝 Observações</label>
-                    <textarea id="regObservacoes" rows="3"
-                              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                              placeholder="O que aconteceu de diferente hoje?">${registroExistente?.observacoes || ""}</textarea>
-                </div>
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-600 mb-1">📝 Observações</label>
+            <textarea id="regObservacoes" rows="3"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                      placeholder="O que aconteceu de diferente hoje?">${registroExistente?.observacoes || ""}</textarea>
+          </div>
 
-                <!-- Submit -->
-                <button type="submit" class="w-full btn-primary text-white py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition">
-                    ${registroExistente ? "💾 Atualizar Registro" : "✅ Salvar Registro"}
-                </button>
-            </form>
-        </div>
+          <button type="submit" class="w-full btn-primary text-white py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition">
+            ${registroExistente ? "💾 Atualizar Registro" : "✅ Salvar Registro"}
+          </button>
+        </form>
+      </div>
     `;
 
-    // Update dia da semana when date changes
+    // Ao mudar a data, recalcula o dia da semana
     document.getElementById("regData").addEventListener("change", (e) => {
-      const data = new Date(e.target.value + "T12:00:00"); // Força meio-dia para evitar timezone
+      const data = new Date(e.target.value + "T12:00:00");
       const diaSemana = data.toLocaleDateString("pt-BR", { weekday: "long" });
       document.getElementById("regDiaSemana").value = diaSemana;
     });
 
-    // CORREÇÃO: Adicionar event listener no form
-    document
-      .getElementById("registroForm")
-      .addEventListener("submit", (e) => this.salvarRegistro(e));
+    document.getElementById("registroForm").addEventListener("submit", (e) => this.salvarRegistro(e));
   }
 
+  // Renderiza os campos de itens vendidos (agrupados por categoria em <details>)
   renderItensForm(sugestaoMix, itensExistentes) {
     const categorias = {
       bolos: { nome: "🎂 Bolos", produtos: [], emoji: "🎂" },
@@ -786,9 +758,7 @@ class LuminarApp {
     for (const produto of this.produtos || []) {
       if (categorias[produto.categoria]) {
         const sugestao = sugestaoMix?.[produto.id] || 0;
-        const existente = itensExistentes?.find(
-          (i) => i.codigo === produto.codigo,
-        );
+        const existente = itensExistentes?.find((i) => i.codigo === produto.codigo);
         categorias[produto.categoria].produtos.push({
           ...produto,
           sugestao,
@@ -801,54 +771,45 @@ class LuminarApp {
     let html = "";
     for (const [catKey, categoria] of Object.entries(categorias)) {
       if (categoria.produtos.length === 0) continue;
-      // Usa <details> para accordion nativo – aberto por padrão se houver sugestão > 0 ou itens já preenchidos
-      // Sempre começa fechado, independente de sugestão
-      const openAttr = "";
-
-      html += `<details class="bg-gray-50 rounded-lg p-3 mb-3" ${openAttr}>
-            <summary class="font-medium text-gray-700 cursor-pointer list-none flex items-center">
-                <span class="mr-2">${openAttr ? "▼" : "▶"}</span> ${categoria.nome} (${categoria.produtos.length} itens)
-            </summary>
-            <div class="grid grid-cols-2 gap-2 mt-3">`;
+      html += `<details class="bg-gray-50 rounded-lg p-3 mb-3">
+        <summary class="font-medium text-gray-700 cursor-pointer list-none flex items-center">
+          <span class="mr-2">▶</span> ${categoria.nome} (${categoria.produtos.length} itens)
+        </summary>
+        <div class="grid grid-cols-2 gap-2 mt-3">`;
 
       for (const prod of categoria.produtos) {
         html += `
-                <div class="bg-white rounded-lg p-2 border border-gray-200">
-                    <div class="text-xs text-gray-600 mb-1">${this.escapeHtml(prod.nome)} (${prod.codigo})</div>
-                    <div class="flex gap-2">
-                        <input type="number" min="0" name="levado_${prod.id}" value="${prod.levado || ""}" placeholder="Lev" class="w-1/2 px-2 py-1 text-sm border border-gray-300 rounded">
-                        <input type="number" min="0" name="vendido_${prod.id}" value="${prod.vendido || ""}" placeholder="Vend" class="w-1/2 px-2 py-1 text-sm border border-gray-300 rounded">
-                    </div>
-                    ${prod.sugestao > 0 ? `<div class="text-xs text-purple-600 mt-1">Sugestão: ${prod.sugestao}</div>` : ""}
-                </div>`;
+          <div class="bg-white rounded-lg p-2 border border-gray-200">
+            <div class="text-xs text-gray-600 mb-1">${this.escapeHtml(prod.nome)} (${prod.codigo})</div>
+            <div class="flex gap-2">
+              <input type="number" min="0" name="levado_${prod.id}" value="${prod.levado || ""}" placeholder="Lev" class="w-1/2 px-2 py-1 text-sm border border-gray-300 rounded">
+              <input type="number" min="0" name="vendido_${prod.id}" value="${prod.vendido || ""}" placeholder="Vend" class="w-1/2 px-2 py-1 text-sm border border-gray-300 rounded">
+            </div>
+            ${prod.sugestao > 0 ? `<div class="text-xs text-purple-600 mt-1">Sugestão: ${prod.sugestao}</div>` : ""}
+          </div>`;
       }
       html += `</div></details>`;
     }
     return html;
   }
 
+  // Salva ou atualiza um registro diário
   async salvarRegistro(event) {
     event.preventDefault();
-
     const data = document.getElementById("regData").value;
 
-    // CORREÇÃO: Validar data antes de salvar
     if (!data || data.trim() === "") {
       this.showToast("Data inválida", "error");
       return;
     }
 
-    // Collect items vendidos
+    // Coleta os itens vendidos
     const itensVendidos = [];
     for (const produto of this.produtos) {
       const levado =
-        parseInt(
-          document.querySelector(`[name="levado_${produto.id}"]`)?.value,
-        ) || 0;
+        parseInt(document.querySelector(`[name="levado_${produto.id}"]`)?.value) || 0;
       const vendido =
-        parseInt(
-          document.querySelector(`[name="vendido_${produto.id}"]`)?.value,
-        ) || 0;
+        parseInt(document.querySelector(`[name="vendido_${produto.id}"]`)?.value) || 0;
 
       if (levado > 0 || vendido > 0) {
         itensVendidos.push({
@@ -862,10 +823,9 @@ class LuminarApp {
       }
     }
 
-    // Calculate efficiency
     const eficiencia = this.calcularEficiencia(itensVendidos);
 
-    // CORREÇÃO: Verificar se já existe registro antes de sobrescrever
+    // Confirmação se já existe registro
     const registroExistente = await db.getRegistro(data, this.currentUserId);
     if (
       registroExistente &&
@@ -881,8 +841,7 @@ class LuminarApp {
       fluxo: {
         pagosDia: parseFloat(document.getElementById("regPagos").value) || 0,
         fiadosHoje: parseFloat(document.getElementById("regFiados").value) || 0,
-        recebidosFiados:
-          parseFloat(document.getElementById("regRecebidos").value) || 0,
+        recebidosFiados: parseFloat(document.getElementById("regRecebidos").value) || 0,
       },
       tempoOperacional: {
         inicio: document.getElementById("regInicio").value,
@@ -896,24 +855,17 @@ class LuminarApp {
       clima: {
         real: {
           condicao: document.getElementById("regClimaCondicao").value,
-          temperatura: parseFloat(
-            document.getElementById("regClimaTemp").value,
-          ),
+          temperatura: parseFloat(document.getElementById("regClimaTemp").value),
         },
         previsao: {
-          condicao:
-            this.weatherData?.forecast?.[0]?.condition?.category || "nublado",
+          condicao: this.weatherData?.forecast?.[0]?.condition?.category || "nublado",
           temperatura: this.weatherData?.forecast?.[0]?.maxTemp || 25,
           fonte: "Open-Meteo",
         },
       },
       observacoes: document.getElementById("regObservacoes").value,
       eficiencia,
-      agentesFeedback: this.gerarFeedbackAgentes(
-        itensVendidos,
-        eficiencia,
-        data,
-      ),
+      agentesFeedback: this.gerarFeedbackAgentes(itensVendidos, eficiencia, data),
     };
 
     try {
@@ -926,21 +878,18 @@ class LuminarApp {
     }
   }
 
+  // Calcula eficiência (vendido / levado) geral, por categoria e por produto
   calcularEficiencia(itens) {
-    let totalLevado = 0,
-      totalVendido = 0;
-    const porCategoria = {},
-      porProduto = {};
+    let totalLevado = 0, totalVendido = 0;
+    const porCategoria = {}, porProduto = {};
 
     for (const item of itens) {
       totalLevado += item.levado;
       totalVendido += item.vendido;
-      if (!porCategoria[item.categoria])
-        porCategoria[item.categoria] = { levado: 0, vendido: 0 };
+      if (!porCategoria[item.categoria]) porCategoria[item.categoria] = { levado: 0, vendido: 0 };
       porCategoria[item.categoria].levado += item.levado;
       porCategoria[item.categoria].vendido += item.vendido;
-      porProduto[item.codigo] =
-        item.levado > 0 ? item.vendido / item.levado : 0;
+      porProduto[item.codigo] = item.levado > 0 ? item.vendido / item.levado : 0;
     }
 
     const efPorCategoria = {};
@@ -955,6 +904,7 @@ class LuminarApp {
     };
   }
 
+  // Calcula diferença em minutos entre dois horários
   calcularMinutos(inicio, fim) {
     if (!inicio || !fim) return 0;
     const [h1, m1] = inicio.split(":").map(Number);
@@ -962,6 +912,7 @@ class LuminarApp {
     return Math.max(0, h2 * 60 + m2 - (h1 * 60 + m1));
   }
 
+  // Gera feedback dos agentes (placeholders, poderiam vir da IA)
   gerarFeedbackAgentes(itens, eficiencia) {
     const efGeral = Math.round((eficiencia?.geral || 0) * 100);
     return {
@@ -976,82 +927,76 @@ class LuminarApp {
   async renderFiados(container) {
     const fiadosAtivos = await db.getFiadosAtivos(this.currentUserId);
     const fiadosVencidos = await db.getFiadosVencidos(this.currentUserId);
-    const totalDevido = (fiadosAtivos || []).reduce(
-      (sum, f) => sum + (f.valor || 0),
-      0,
-    );
+    const totalDevido = (fiadosAtivos || []).reduce((sum, f) => sum + (f.valor || 0), 0);
 
     container.innerHTML = `
-            <div class="bg-white rounded-2xl p-5 card-shadow">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="font-semibold text-gray-700">👥 Controle de Fiados</h2>
-                    <button id="btnNovoFiado" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Novo</button>
-                </div>
-                <div class="grid grid-cols-2 gap-3 mb-4">
-                    <div class="bg-yellow-50 rounded-lg p-3 text-center">
-                        <div class="text-2xl font-bold text-yellow-700">${fiadosAtivos?.length || 0}</div>
-                        <div class="text-xs text-yellow-600">Fiados Ativos</div>
-                    </div>
-                    <div class="bg-red-50 rounded-lg p-3 text-center">
-                        <div class="text-2xl font-bold text-red-700">${fiadosVencidos?.length || 0}</div>
-                        <div class="text-xs text-red-600">Vencidos</div>
-                    </div>
-                </div>
-                <div class="bg-gray-100 rounded-lg p-3 mb-4 text-center">
-                    <div class="text-sm text-gray-600">Total a Receber</div>
-                    <div class="text-2xl font-bold text-gray-800">R$ ${totalDevido.toFixed(2)}</div>
-                </div>
-                <div class="space-y-3">
-                    ${
-                      fiadosAtivos?.length === 0
-                        ? '<p class="text-center text-gray-500 py-4">Nenhum fiado ativo</p>'
-                        : (fiadosAtivos || [])
-                            .map((f) => this.renderFiadoCard(f))
-                            .join("")
-                    }
-                </div>
-            </div>
-        `;
+      <div class="bg-white rounded-2xl p-5 card-shadow">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="font-semibold text-gray-700">👥 Controle de Fiados</h2>
+          <button id="btnNovoFiado" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium">+ Novo</button>
+        </div>
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="bg-yellow-50 rounded-lg p-3 text-center">
+            <div class="text-2xl font-bold text-yellow-700">${fiadosAtivos?.length || 0}</div>
+            <div class="text-xs text-yellow-600">Fiados Ativos</div>
+          </div>
+          <div class="bg-red-50 rounded-lg p-3 text-center">
+            <div class="text-2xl font-bold text-red-700">${fiadosVencidos?.length || 0}</div>
+            <div class="text-xs text-red-600">Vencidos</div>
+          </div>
+        </div>
+        <div class="bg-gray-100 rounded-lg p-3 mb-4 text-center">
+          <div class="text-sm text-gray-600">Total a Receber</div>
+          <div class="text-2xl font-bold text-gray-800">R$ ${totalDevido.toFixed(2)}</div>
+        </div>
+        <div class="space-y-3">
+          ${fiadosAtivos?.length === 0
+            ? '<p class="text-center text-gray-500 py-4">Nenhum fiado ativo</p>'
+            : (fiadosAtivos || []).map((f) => this.renderFiadoCard(f)).join("")
+          }
+        </div>
+      </div>
+    `;
 
-    document
-      .getElementById("btnNovoFiado")
-      ?.addEventListener("click", () => this.openModal("novoFiado"));
-    // 🔥 Delegação de eventos para o botão Quitar (com confirmação)
+    document.getElementById("btnNovoFiado")?.addEventListener("click", () => this.openModal("novoFiado"));
+
+    // Delegação de eventos para botão Quitar
     container.addEventListener("click", (e) => {
       const btnQuitar = e.target.closest(".btn-quitar");
       if (btnQuitar) {
         const fiadoId = btnQuitar.dataset.fiadoId;
         if (fiadoId) {
-          this.confirmarQuitarFiado(fiadoId); // <- chama o novo método
+          this.confirmarQuitarFiado(fiadoId);
         }
       }
     });
   }
 
+  // Card individual de fiado
   renderFiadoCard(fiado) {
     const hoje = new Date().toISOString().split("T")[0];
     const vencido = fiado.dataVencimento < hoje;
 
     return `
-            <div class="border border-gray-200 rounded-lg p-3 ${vencido ? "bg-red-50 border-red-200" : "bg-white"}">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <div class="font-medium text-gray-800">${this.escapeHtml(fiado.clienteNome)}</div>
-                        <div class="text-sm text-gray-500">
-                            R$ ${(fiado.valor || 0).toFixed(2)} • 
-                            Vence: ${new Date(fiado.dataVencimento + "T12:00:00").toLocaleDateString("pt-BR")}
-                            ${vencido ? ' <span class="text-red-600 font-medium">(VENCIDO)</span>' : ""}
-                        </div>
-                    </div>
-                    <button data-fiado-id="${fiado.id}" class="btn-quitar text-green-600 hover:bg-green-50 px-3 py-1 rounded-lg text-sm font-medium">
-                        Quitar
-                    </button>
-                </div>
+      <div class="border border-gray-200 rounded-lg p-3 ${vencido ? "bg-red-50 border-red-200" : "bg-white"}">
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="font-medium text-gray-800">${this.escapeHtml(fiado.clienteNome)}</div>
+            <div class="text-sm text-gray-500">
+              R$ ${(fiado.valor || 0).toFixed(2)} • 
+              Vence: ${new Date(fiado.dataVencimento + "T12:00:00").toLocaleDateString("pt-BR")}
+              ${vencido ? ' <span class="text-red-600 font-medium">(VENCIDO)</span>' : ""}
             </div>
-        `;
+          </div>
+          <button data-fiado-id="${fiado.id}" class="btn-quitar text-green-600 hover:bg-green-50 px-3 py-1 rounded-lg text-sm font-medium">
+            Quitar
+          </button>
+        </div>
+      </div>
+    `;
   }
 
-  // Novo método: exibe diálogo de confirmação antes de quitar
+  // Confirmação antes de quitar um fiado
   async confirmarQuitarFiado(fiadoId) {
     const fiado = await db.getFiado(fiadoId);
     if (!fiado) {
@@ -1062,91 +1007,72 @@ class LuminarApp {
     const valorFormatado = fiado.valor.toFixed(2);
     const nomeCliente = this.escapeHtml(fiado.clienteNome);
 
-    // Cria um modal de confirmação personalizado
     const modal = document.getElementById("modal");
     const content = document.getElementById("modalContent");
     if (!modal || !content) return;
 
     content.innerHTML = `
-        <div class="p-5">
-            <h3 class="text-lg font-bold text-gray-800 mb-3">Confirmar Quitação</h3>
-            <p class="text-gray-700 mb-2">
-                Confirmar quitação de <strong>R$ ${valorFormatado}</strong> de <strong>${nomeCliente}</strong>?
-            </p>
-            <p class="text-gray-700 mb-4">
-                Deseja registrar este valor como recebido no fluxo de caixa de hoje?
-            </p>
-            <div class="flex gap-3">
-                <button id="btnQuitarComFluxo" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium">
-                    Sim, adicionar ao dia
-                </button>
-                <button id="btnQuitarSemFluxo" class="flex-1 bg-gray-600 text-white py-2 rounded-lg font-medium">
-                    Não, apenas quitar
-                </button>
-            </div>
-            <button id="btnCancelarQuitar" class="w-full mt-3 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium">
-                Cancelar
-            </button>
+      <div class="p-5">
+        <h3 class="text-lg font-bold text-gray-800 mb-3">Confirmar Quitação</h3>
+        <p class="text-gray-700 mb-2">
+          Confirmar quitação de <strong>R$ ${valorFormatado}</strong> de <strong>${nomeCliente}</strong>?
+        </p>
+        <p class="text-gray-700 mb-4">
+          Deseja registrar este valor como recebido no fluxo de caixa de hoje?
+        </p>
+        <div class="flex gap-3">
+          <button id="btnQuitarComFluxo" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium">
+            Sim, adicionar ao dia
+          </button>
+          <button id="btnQuitarSemFluxo" class="flex-1 bg-gray-600 text-white py-2 rounded-lg font-medium">
+            Não, apenas quitar
+          </button>
         </div>
+        <button id="btnCancelarQuitar" class="w-full mt-3 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium">
+          Cancelar
+        </button>
+      </div>
     `;
 
     modal.classList.remove("hidden");
 
-    // Listener para "Sim, adicionar ao dia"
-    document
-      .getElementById("btnQuitarComFluxo")
-      .addEventListener("click", async () => {
-        modal.classList.add("hidden");
-        await this.executarQuitarFiado(fiado, true);
-      });
+    document.getElementById("btnQuitarComFluxo").addEventListener("click", async () => {
+      modal.classList.add("hidden");
+      await this.executarQuitarFiado(fiado, true);
+    });
 
-    // Listener para "Não, apenas quitar"
-    document
-      .getElementById("btnQuitarSemFluxo")
-      .addEventListener("click", async () => {
-        modal.classList.add("hidden");
-        await this.executarQuitarFiado(fiado, false);
-      });
+    document.getElementById("btnQuitarSemFluxo").addEventListener("click", async () => {
+      modal.classList.add("hidden");
+      await this.executarQuitarFiado(fiado, false);
+    });
 
-    // Listener para "Cancelar"
-    document
-      .getElementById("btnCancelarQuitar")
-      .addEventListener("click", () => {
-        modal.classList.add("hidden");
-      });
+    document.getElementById("btnCancelarQuitar").addEventListener("click", () => {
+      modal.classList.add("hidden");
+    });
   }
 
-  // Executa a quitação e opcionalmente adiciona ao fluxo de caixa
+  // Executa a quitação e opcionalmente adiciona ao fluxo do dia
   async executarQuitarFiado(fiado, adicionarAoFluxo) {
-    // Marca como quitado
     fiado.pago = true;
     fiado.dataPagamento = new Date().toISOString().split("T")[0];
-    fiado.quitado_automaticamente = adicionarAoFluxo; // campo novo
+    fiado.quitado_automaticamente = adicionarAoFluxo;
     await db.saveFiado(fiado, this.currentUserId);
 
     if (adicionarAoFluxo) {
-      // Adiciona ao registro do dia atual como "Recebidos de Fiados"
       const hoje = new Date().toISOString().split("T")[0];
       let registroHoje = await db.getRegistro(hoje, this.currentUserId);
 
       if (!registroHoje) {
-        // Cria um registro mínimo se não existir
         registroHoje = {
           id: hoje,
           data: hoje,
-          diaSemana: new Date().toLocaleDateString("pt-BR", {
-            weekday: "long",
-          }),
+          diaSemana: new Date().toLocaleDateString("pt-BR", { weekday: "long" }),
           fluxo: { pagosDia: 0, fiadosHoje: 0, recebidosFiados: 0 },
           tempoOperacional: { inicio: "", fim: "", totalMinutos: 0 },
           itensVendidos: [],
           clima: {
             real: { condicao: "nublado", temperatura: 25 },
-            previsao: {
-              condicao: "nublado",
-              temperatura: 25,
-              fonte: "Open-Meteo",
-            },
+            previsao: { condicao: "nublado", temperatura: 25, fonte: "Open-Meteo" },
           },
           observacoes: `Quitação automática do fiado de ${fiado.clienteNome}`,
           eficiencia: { geral: 0, porCategoria: {}, porProduto: {} },
@@ -1154,38 +1080,17 @@ class LuminarApp {
         };
       }
 
-      // Garante que a estrutura existe
-      if (!registroHoje.fluxo)
-        registroHoje.fluxo = { pagosDia: 0, fiadosHoje: 0, recebidosFiados: 0 };
-
-      // Adiciona o valor ao campo recebidosFiados
-      registroHoje.fluxo.recebidosFiados =
-        (registroHoje.fluxo.recebidosFiados || 0) + fiado.valor;
-
-      // Adiciona uma observação sobre a quitação automática
+      if (!registroHoje.fluxo) registroHoje.fluxo = { pagosDia: 0, fiadosHoje: 0, recebidosFiados: 0 };
+      registroHoje.fluxo.recebidosFiados = (registroHoje.fluxo.recebidosFiados || 0) + fiado.valor;
       if (!registroHoje.observacoes) registroHoje.observacoes = "";
       registroHoje.observacoes += `\n[Auto] Quitação de fiado: ${fiado.clienteNome} - R$ ${fiado.valor.toFixed(2)}`;
 
       await db.saveRegistro(registroHoje, this.currentUserId);
-      this.showToast(
-        `Fiado quitado e R$ ${fiado.valor.toFixed(2)} adicionado ao caixa de hoje!`,
-        "success",
-      );
+      this.showToast(`Fiado quitado e R$ ${fiado.valor.toFixed(2)} adicionado ao caixa de hoje!`, "success");
     } else {
       this.showToast("Fiado quitado com sucesso!", "success");
     }
 
-    // Recarrega a tela de fiados
-    this.renderFiados(document.getElementById("mainContent"));
-  }
-
-  async quitarFiado(id) {
-    const fiado = await db.getFiado(id);
-    if (!fiado) return;
-    fiado.pago = true;
-    fiado.dataPagamento = new Date().toISOString().split("T")[0];
-    await db.saveFiado(fiado, this.currentUserId);
-    this.showToast("Fiado quitado!", "success");
     this.renderFiados(document.getElementById("mainContent"));
   }
 
@@ -1195,40 +1100,32 @@ class LuminarApp {
     const registros = await db.getAllRegistros(this.currentUserId);
     const dataLimite = new Date();
     dataLimite.setDate(dataLimite.getDate() - 30);
-    const ultimos30 = (registros || []).filter(
-      (r) => new Date(r.data) >= dataLimite,
-    );
+    const ultimos30 = (registros || []).filter((r) => new Date(r.data) >= dataLimite);
 
     container.innerHTML = `
-            <div class="bg-white rounded-2xl p-5 card-shadow">
-                <h2 class="font-semibold text-gray-700 mb-4">📈 Relatórios</h2>
-                <div class="grid grid-cols-2 gap-3 mb-4">
-                    <div class="bg-purple-50 rounded-lg p-3 text-center">
-                        <div class="text-2xl font-bold text-purple-700">${registros?.length || 0}</div>
-                        <div class="text-xs text-purple-600">Dias Registrados</div>
-                    </div>
-                    <div class="bg-green-50 rounded-lg p-3 text-center">
-                        <div class="text-2xl font-bold text-green-700">${ultimos30?.length || 0}</div>
-                        <div class="text-xs text-green-600">Últimos 30 dias</div>
-                    </div>
-                </div>
-                <div class="space-y-2">
-                    <button id="btnExportJson" class="w-full py-3 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium transition">💾 Backup (JSON)</button>
-                    <button id="btnExportMd" class="w-full py-3 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium transition">📝 Obsidian (MD)</button>
-                    <button id="btnImportar" class="w-full py-3 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium transition">📥 Importar Dados</button>
-                </div>
-            </div>
-        `;
+      <div class="bg-white rounded-2xl p-5 card-shadow">
+        <h2 class="font-semibold text-gray-700 mb-4">📈 Relatórios</h2>
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="bg-purple-50 rounded-lg p-3 text-center">
+            <div class="text-2xl font-bold text-purple-700">${registros?.length || 0}</div>
+            <div class="text-xs text-purple-600">Dias Registrados</div>
+          </div>
+          <div class="bg-green-50 rounded-lg p-3 text-center">
+            <div class="text-2xl font-bold text-green-700">${ultimos30?.length || 0}</div>
+            <div class="text-xs text-green-600">Últimos 30 dias</div>
+          </div>
+        </div>
+        <div class="space-y-2">
+          <button id="btnExportJson" class="w-full py-3 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium transition">💾 Backup (JSON)</button>
+          <button id="btnExportMd" class="w-full py-3 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium transition">📝 Obsidian (MD)</button>
+          <button id="btnImportar" class="w-full py-3 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium transition">📥 Importar Dados</button>
+        </div>
+      </div>
+    `;
 
-    document
-      .getElementById("btnExportJson")
-      ?.addEventListener("click", () => this.exportData());
-    document
-      .getElementById("btnExportMd")
-      ?.addEventListener("click", () => this.exportObsidian());
-    document
-      .getElementById("btnImportar")
-      ?.addEventListener("click", () => this.openModal("importar"));
+    document.getElementById("btnExportJson")?.addEventListener("click", () => this.exportData());
+    document.getElementById("btnExportMd")?.addEventListener("click", () => this.exportObsidian());
+    document.getElementById("btnImportar")?.addEventListener("click", () => this.openModal("importar"));
   }
 
   // === MODALS ===
@@ -1243,87 +1140,48 @@ class LuminarApp {
     switch (type) {
       case "novoFiado":
         content.innerHTML = this.renderNovoFiadoModal();
-        document
-          .getElementById("formNovoFiado")
-          ?.addEventListener("submit", (e) => this.salvarFiado(e));
-        // Fecha ao clicar no X
+        document.getElementById("formNovoFiado")?.addEventListener("submit", (e) => this.salvarFiado(e));
         const btnClose = content.querySelector("#btnCloseModal");
-        if (btnClose)
-          btnClose.addEventListener("click", () => this.closeModal());
+        if (btnClose) btnClose.addEventListener("click", () => this.closeModal());
         break;
       case "importar":
         content.innerHTML = this.renderImportarModal();
-        document
-          .getElementById("btnDoImport")
-          ?.addEventListener("click", () => this.doImport());
+        document.getElementById("btnDoImport")?.addEventListener("click", () => this.doImport());
         const btnCloseImport = content.querySelector("#btnCloseModal");
-        if (btnCloseImport)
-          btnCloseImport.addEventListener("click", () => this.closeModal());
-
+        if (btnCloseImport) btnCloseImport.addEventListener("click", () => this.closeModal());
         break;
       case "settings":
         content.innerHTML = this.renderSettingsModal();
-        // Listeners das abas
+        // Abas
         content.querySelectorAll(".tab-settings").forEach((btn) => {
           btn.addEventListener("click", (e) => {
             const tab = e.currentTarget.dataset.tab;
             content.querySelectorAll(".tab-settings").forEach((b) => {
-              b.classList.remove(
-                "text-purple-600",
-                "border-b-2",
-                "border-purple-600",
-              );
+              b.classList.remove("text-purple-600", "border-b-2", "border-purple-600");
               b.classList.add("text-gray-500");
             });
-            e.currentTarget.classList.add(
-              "text-purple-600",
-              "border-b-2",
-              "border-purple-600",
-            );
+            e.currentTarget.classList.add("text-purple-600", "border-b-2", "border-purple-600");
             e.currentTarget.classList.remove("text-gray-500");
-
-            content
-              .querySelectorAll(".tab-content")
-              .forEach((c) => c.classList.add("hidden"));
-            content
-              .querySelector(
-                `#tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`,
-              )
-              .classList.remove("hidden");
+            content.querySelectorAll(".tab-content").forEach((c) => c.classList.add("hidden"));
+            content.querySelector(`#tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`).classList.remove("hidden");
           });
         });
-        // Listener salvar metas
-        document
-          .getElementById("btnSaveSettings")
-          ?.addEventListener("click", () => this.salvarConfiguracoes());
-
-        // Listener salvar clima
-        document
-          .getElementById("btnSaveClima")
-          ?.addEventListener("click", () => this.salvarConfigClima());
-        // 🔥 Listener para o botão de localização GPS
-        document
-          .getElementById("btnUsarLocalizacao")
-          ?.addEventListener("click", async () => {
-            try {
-              const coords = await this.obterLocalizacaoAtual();
-              const cidadeInput = document.getElementById("cidadeClima");
-              if (cidadeInput) {
-                cidadeInput.value = `${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}`;
-              }
-              this.showToast("Localização obtida com sucesso!", "success");
-            } catch (error) {
-              console.error("Erro ao obter localização:", error);
-              this.showToast(
-                "Não foi possível obter sua localização. Verifique as permissões.",
-                "error",
-              );
+        document.getElementById("btnSaveSettings")?.addEventListener("click", () => this.salvarConfiguracoes());
+        document.getElementById("btnSaveClima")?.addEventListener("click", () => this.salvarConfigClima());
+        document.getElementById("btnUsarLocalizacao")?.addEventListener("click", async () => {
+          try {
+            const coords = await this.obterLocalizacaoAtual();
+            const cidadeInput = document.getElementById("cidadeClima");
+            if (cidadeInput) {
+              cidadeInput.value = `${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}`;
             }
-          });
-        // Listeners CRUD de produtos
-        document
-          .getElementById("btnAddProduto")
-          ?.addEventListener("click", () => this.abrirModalProduto());
+            this.showToast("Localização obtida com sucesso!", "success");
+          } catch (error) {
+            console.error("Erro ao obter localização:", error);
+            this.showToast("Não foi possível obter sua localização. Verifique as permissões.", "error");
+          }
+        });
+        document.getElementById("btnAddProduto")?.addEventListener("click", () => this.abrirModalProduto());
         document.querySelectorAll(".btn-edit-produto").forEach((btn) => {
           btn.addEventListener("click", (e) => {
             const id = e.currentTarget.dataset.produtoId;
@@ -1337,20 +1195,13 @@ class LuminarApp {
             this.excluirProduto(id);
           });
         });
-        // Se uma tab específica foi solicitada, ativa-a
         if (tab) {
-          const tabBtn = content.querySelector(
-            `.tab-settings[data-tab="${tab}"]`,
-          );
+          const tabBtn = content.querySelector(`.tab-settings[data-tab="${tab}"]`);
           if (tabBtn) tabBtn.click();
         }
-        // Listener logout
-        document
-          .getElementById("btnLogout")
-          ?.addEventListener("click", () => this.logout());
+        document.getElementById("btnLogout")?.addEventListener("click", () => this.logout());
         const btnCloseSettings = content.querySelector("#btnCloseModal");
-        if (btnCloseSettings)
-          btnCloseSettings.addEventListener("click", () => this.closeModal());
+        if (btnCloseSettings) btnCloseSettings.addEventListener("click", () => this.closeModal());
         break;
     }
   }
@@ -1359,42 +1210,44 @@ class LuminarApp {
     document.getElementById("modal")?.classList.add("hidden");
   }
 
+  // HTML do modal de novo fiado
   renderNovoFiadoModal() {
     const hoje = new Date().toISOString().split("T")[0];
     const vencimento = new Date();
     vencimento.setDate(vencimento.getDate() + 7);
 
     return `
-            <div class="p-5">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-gray-800">Novo Fiado</h3>
-                    <button id="btnCloseModal" class="text-gray-500 text-2xl">&times;</button>
-                </div>
-                <form id="formNovoFiado">
-                    <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Nome do Cliente</label>
-                        <input type="text" id="fiadoNome" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Valor (R$)</label>
-                        <input type="number" step="0.01" id="fiadoValor" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    <div class="grid grid-cols-2 gap-3 mb-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-600 mb-1">Data</label>
-                            <input type="date" id="fiadoData" value="${hoje}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-600 mb-1">Vencimento</label>
-                            <input type="date" id="fiadoVencimento" value="${vencimento.toISOString().split("T")[0]}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                        </div>
-                    </div>
-                    <button type="submit" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Salvar Fiado</button>
-                </form>
+      <div class="p-5">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-bold text-gray-800">Novo Fiado</h3>
+          <button id="btnCloseModal" class="text-gray-500 text-2xl">&times;</button>
+        </div>
+        <form id="formNovoFiado">
+          <div class="mb-3">
+            <label class="block text-sm font-medium text-gray-600 mb-1">Nome do Cliente</label>
+            <input type="text" id="fiadoNome" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+          </div>
+          <div class="mb-3">
+            <label class="block text-sm font-medium text-gray-600 mb-1">Valor (R$)</label>
+            <input type="number" step="0.01" id="fiadoValor" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-600 mb-1">Data</label>
+              <input type="date" id="fiadoData" value="${hoje}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
             </div>
-        `;
+            <div>
+              <label class="block text-sm font-medium text-gray-600 mb-1">Vencimento</label>
+              <input type="date" id="fiadoVencimento" value="${vencimento.toISOString().split("T")[0]}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+          </div>
+          <button type="submit" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Salvar Fiado</button>
+        </form>
+      </div>
+    `;
   }
 
+  // Salva um novo fiado
   async salvarFiado(event) {
     event.preventDefault();
     const nome = document.getElementById("fiadoNome")?.value?.trim();
@@ -1409,9 +1262,7 @@ class LuminarApp {
       id: "fiado_" + Date.now(),
       clienteNome: this.escapeHtml(nome),
       valor,
-      dataEmprestimo:
-        document.getElementById("fiadoData")?.value ||
-        new Date().toISOString().split("T")[0],
+      dataEmprestimo: document.getElementById("fiadoData")?.value || new Date().toISOString().split("T")[0],
       dataVencimento: document.getElementById("fiadoVencimento")?.value,
       pago: false,
     };
@@ -1422,150 +1273,120 @@ class LuminarApp {
     this.renderFiados(document.getElementById("mainContent"));
   }
 
+  // HTML do modal de configurações
   renderSettingsModal() {
-    const metas = this.metas || {
-      survival: 110,
-      comfortable: 150,
-      ideal: 260,
-      semanal: 750,
-      mensal: 3000,
-    };
-    // Carrega configurações de clima e indicadores (se existirem)
-    const climaConfig = this.climaConfig || {
-      cidade: "Rio de Janeiro",
-      lat: -22.9455,
-      lon: -43.3627,
-    };
-    const indicadores = this.indicadores || {
-      usarClima: true,
-      usarDiaSemana: true,
-    };
+    const metas = this.metas || { survival: 110, comfortable: 150, ideal: 260, semanal: 750, mensal: 3000 };
+    const climaConfig = this.climaConfig || { cidade: "Rio de Janeiro", lat: -22.9455, lon: -43.3627 };
+    const indicadores = this.indicadores || { usarClima: true, usarDiaSemana: true };
 
     return `
-        <div class="p-5">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-800">⚙️ Configurações</h3>
-                <button id="btnCloseModal" class="text-gray-500 text-2xl">&times;</button>
-            </div>
-            
-            <!-- Abas -->
-            <div class="flex border-b border-gray-200 mb-4">
-                <button class="tab-settings active flex-1 py-2 text-center font-medium text-purple-600 border-b-2 border-purple-600" data-tab="metas">Metas</button>
-                <button class="tab-settings flex-1 py-2 text-center font-medium text-gray-500" data-tab="cardapio">Cardápio</button>
-                <button class="tab-settings flex-1 py-2 text-center font-medium text-gray-500" data-tab="clima">Clima</button>
-                <button class="tab-settings flex-1 py-2 text-center font-medium text-gray-500" data-tab="perfil">Perfil</button>
-            </div>
-            
-            <!-- Conteúdo da Aba Metas -->
-            <div id="tabMetas" class="tab-content">
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-2">Metas Diárias</label>
-                        <div class="grid grid-cols-3 gap-2">
-                            <div><label class="text-xs text-yellow-600">Sobrevivência</label><input type="number" id="metaSurvival" value="${metas.survival}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
-                            <div><label class="text-xs text-orange-600">Confortável</label><input type="number" id="metaComfortable" value="${metas.comfortable}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
-                            <div><label class="text-xs text-green-600">Ideal</label><input type="number" id="metaIdeal" value="${metas.ideal}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-2">Meta Semanal</label>
-                        <input type="number" id="metaSemanal" value="${metas.semanal || 750}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-2">Meta Mensal</label>
-                        <input type="number" id="metaMensal" value="${metas.mensal || 3000}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    <div>
-    <label class="block text-sm font-medium text-gray-600 mb-2">Valor Mínimo do Mix (R$)</label>
-    <input type="number" id="mixValorMinimo" value="${this.mixValorMinimo || 250}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-    <p class="text-xs text-gray-500 mt-1">O sistema tentará sugerir um mix que atinja pelo menos este valor.</p>
-</div>
-                    <button id="btnSaveSettings" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Salvar Metas</button>
-                </div>
-            </div>
-            
-            <!-- Conteúdo da Aba Cardápio -->
-            <div id="tabCardapio" class="tab-content hidden">
-                <div class="space-y-3">
-                    <button id="btnAddProduto" class="w-full py-2 bg-green-100 text-green-700 rounded-lg font-medium text-sm">➕ Adicionar Produto</button>
-                    <div id="listaProdutosSettings" class="max-h-80 overflow-y-auto space-y-2">
-                        ${this.renderListaProdutosSettings()}
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Conteúdo da Aba Clima & Indicadores -->
-            <div id="tabClima" class="tab-content hidden">
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Cidade para previsão do tempo</label>
-            <input type="text" id="cidadeClima" value="${this.escapeHtml(climaConfig.cidade || "")}" placeholder="Ex: Freguesia, Rio de Janeiro" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-            <p class="text-xs text-gray-500 mt-1">Usado para sugerir o mix de produtos.</p>
-            <button type="button" id="btnUsarLocalizacao" class="w-full py-2 bg-blue-100 text-blue-700 rounded-lg text-sm mt-2">📍 Usar minha localização atual</button>
+      <div class="p-5">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-bold text-gray-800">⚙️ Configurações</h3>
+          <button id="btnCloseModal" class="text-gray-500 text-2xl">&times;</button>
         </div>
-                    <div class="border-t pt-4">
-                        <label class="block text-sm font-medium text-gray-600 mb-2">Indicadores de Impacto</label>
-                        <div class="space-y-2">
-                            <label class="flex items-center">
-                                <input type="checkbox" id="indClima" ${indicadores.usarClima ? "checked" : ""} class="mr-2"> Considerar clima na sugestão de mix
-                            </label>
-                            <label class="flex items-center">
-                                <input type="checkbox" id="indDiaSemana" ${indicadores.usarDiaSemana ? "checked" : ""} class="mr-2"> Considerar dia da semana
-                            </label>
-                        </div>
-                    </div>
-                    <button id="btnSaveClima" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Salvar Configurações de Clima</button>
-                </div>
-            </div>
-            
-            <!-- Conteúdo da Aba Perfil (placeholder) -->
-            <div id="tabPerfil" class="tab-content hidden">
-                <p class="text-gray-500 text-center py-4">Em breve: editar nome da loja e vendedor.</p>
-            </div>
-            
-            <button id="btnLogout" class="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-semibold mt-4">🚪 Sair da conta</button>
+        <div class="flex border-b border-gray-200 mb-4">
+          <button class="tab-settings active flex-1 py-2 text-center font-medium text-purple-600 border-b-2 border-purple-600" data-tab="metas">Metas</button>
+          <button class="tab-settings flex-1 py-2 text-center font-medium text-gray-500" data-tab="cardapio">Cardápio</button>
+          <button class="tab-settings flex-1 py-2 text-center font-medium text-gray-500" data-tab="clima">Clima</button>
+          <button class="tab-settings flex-1 py-2 text-center font-medium text-gray-500" data-tab="perfil">Perfil</button>
         </div>
+        
+        <div id="tabMetas" class="tab-content">
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-600 mb-2">Metas Diárias</label>
+              <div class="grid grid-cols-3 gap-2">
+                <div><label class="text-xs text-yellow-600">Sobrevivência</label><input type="number" id="metaSurvival" value="${metas.survival}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
+                <div><label class="text-xs text-orange-600">Confortável</label><input type="number" id="metaComfortable" value="${metas.comfortable}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
+                <div><label class="text-xs text-green-600">Ideal</label><input type="number" id="metaIdeal" value="${metas.ideal}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
+              </div>
+            </div>
+            <div><label class="block text-sm font-medium text-gray-600 mb-2">Meta Semanal</label><input type="number" id="metaSemanal" value="${metas.semanal || 750}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
+            <div><label class="block text-sm font-medium text-gray-600 mb-2">Meta Mensal</label><input type="number" id="metaMensal" value="${metas.mensal || 3000}" class="w-full px-3 py-2 border border-gray-300 rounded-lg"></div>
+            <div>
+              <label class="block text-sm font-medium text-gray-600 mb-2">Valor Mínimo do Mix (R$)</label>
+              <input type="number" id="mixValorMinimo" value="${this.mixValorMinimo || 250}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+              <p class="text-xs text-gray-500 mt-1">O sistema tentará sugerir um mix que atinja pelo menos este valor.</p>
+            </div>
+            <button id="btnSaveSettings" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Salvar Metas</button>
+          </div>
+        </div>
+        
+        <div id="tabCardapio" class="tab-content hidden">
+          <div class="space-y-3">
+            <button id="btnAddProduto" class="w-full py-2 bg-green-100 text-green-700 rounded-lg font-medium text-sm">➕ Adicionar Produto</button>
+            <div id="listaProdutosSettings" class="max-h-80 overflow-y-auto space-y-2">
+              ${this.renderListaProdutosSettings()}
+            </div>
+          </div>
+        </div>
+        
+        <div id="tabClima" class="tab-content hidden">
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-600 mb-1">Cidade para previsão do tempo</label>
+              <input type="text" id="cidadeClima" value="${this.escapeHtml(climaConfig.cidade || "")}" placeholder="Ex: Freguesia, Rio de Janeiro" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+              <p class="text-xs text-gray-500 mt-1">Usado para sugerir o mix de produtos.</p>
+              <button type="button" id="btnUsarLocalizacao" class="w-full py-2 bg-blue-100 text-blue-700 rounded-lg text-sm mt-2">📍 Usar minha localização atual</button>
+            </div>
+            <div class="border-t pt-4">
+              <label class="block text-sm font-medium text-gray-600 mb-2">Indicadores de Impacto</label>
+              <div class="space-y-2">
+                <label class="flex items-center"><input type="checkbox" id="indClima" ${indicadores.usarClima ? "checked" : ""} class="mr-2"> Considerar clima na sugestão de mix</label>
+                <label class="flex items-center"><input type="checkbox" id="indDiaSemana" ${indicadores.usarDiaSemana ? "checked" : ""} class="mr-2"> Considerar dia da semana</label>
+              </div>
+            </div>
+            <button id="btnSaveClima" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Salvar Configurações de Clima</button>
+          </div>
+        </div>
+        
+        <div id="tabPerfil" class="tab-content hidden">
+          <p class="text-gray-500 text-center py-4">Em breve: editar nome da loja e vendedor.</p>
+        </div>
+        
+        <button id="btnLogout" class="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-semibold mt-4">🚪 Sair da conta</button>
+      </div>
     `;
   }
 
+  // Salva configurações de metas
   async salvarConfiguracoes() {
     this.metas = {
       survival: parseInt(document.getElementById("metaSurvival")?.value) || 110,
-      comfortable:
-        parseInt(document.getElementById("metaComfortable")?.value) || 150,
+      comfortable: parseInt(document.getElementById("metaComfortable")?.value) || 150,
       ideal: parseInt(document.getElementById("metaIdeal")?.value) || 260,
       semanal: parseInt(document.getElementById("metaSemanal")?.value) || 750,
       mensal: parseInt(document.getElementById("metaMensal")?.value) || 3000,
     };
-    const mixValorMinimo =
-      parseInt(document.getElementById("mixValorMinimo")?.value) || 250;
+    const mixValorMinimo = parseInt(document.getElementById("mixValorMinimo")?.value) || 250;
     this.mixValorMinimo = mixValorMinimo;
     await db.setConfig(this.currentUserId, "mixValorMinimo", mixValorMinimo);
     await db.setConfig(this.currentUserId, "metas", this.metas);
     this.closeModal();
     this.showToast("Metas salvas!", "success");
-    if (this.currentPage === "dashboard")
-      this.renderDashboard(document.getElementById("mainContent"));
+    if (this.currentPage === "dashboard") this.renderDashboard(document.getElementById("mainContent"));
   }
 
+  // Modal de importação
   renderImportarModal() {
     return `
-        <div class="p-5">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-800">📥 Importar Dados</h3>
-                <button id="btnCloseModal" class="text-gray-500 text-2xl">&times;</button>
-            </div>
-            <p class="text-sm font-medium text-gray-600 mb-1">Arquivo JSON</p>
-            <input type="file" id="importFile" accept=".json" class="w-full mb-3 p-2 border rounded-lg">
-            <p class="text-sm font-medium text-gray-600 mb-1">...ou cole o JSON aqui</p>
-            <textarea id="importTextArea" rows="6" class="w-full p-2 border rounded-lg text-sm mb-3" placeholder='Cole aqui o JSON gerado pela IA...'></textarea>
-            <button id="btnDoImport" class="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold">Importar</button>
+      <div class="p-5">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-bold text-gray-800">📥 Importar Dados</h3>
+          <button id="btnCloseModal" class="text-gray-500 text-2xl">&times;</button>
         </div>
+        <p class="text-sm font-medium text-gray-600 mb-1">Arquivo JSON</p>
+        <input type="file" id="importFile" accept=".json" class="w-full mb-3 p-2 border rounded-lg">
+        <p class="text-sm font-medium text-gray-600 mb-1">...ou cole o JSON aqui</p>
+        <textarea id="importTextArea" rows="6" class="w-full p-2 border rounded-lg text-sm mb-3" placeholder='Cole aqui o JSON gerado pela IA...'></textarea>
+        <button id="btnDoImport" class="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold">Importar</button>
+      </div>
     `;
   }
 
+  // Processa importação de JSON
   async doImport() {
-    // 1. Tenta pegar dados da TEXTAREA primeiro (colagem)
     const textArea = document.getElementById("importTextArea");
     let jsonData = null;
 
@@ -1573,21 +1394,14 @@ class LuminarApp {
       try {
         jsonData = JSON.parse(textArea.value.trim());
       } catch (e) {
-        this.showToast(
-          "JSON inválido na área de texto. Verifique a formatação.",
-          "error",
-        );
+        this.showToast("JSON inválido na área de texto. Verifique a formatação.", "error");
         return;
       }
     } else {
-      // 2. Se não colou nada, tenta ler o ARQUIVO selecionado
       const fileInput = document.getElementById("importFile");
       const file = fileInput?.files?.[0];
       if (!file) {
-        this.showToast(
-          "Selecione um arquivo JSON ou cole o conteúdo na caixa de texto.",
-          "error",
-        );
+        this.showToast("Selecione um arquivo JSON ou cole o conteúdo na caixa de texto.", "error");
         return;
       }
       try {
@@ -1599,41 +1413,22 @@ class LuminarApp {
       }
     }
 
-    // 3. Processa os dados
     try {
-      // Caso 1: Registro único (formato do prompt de IA)
       if (jsonData.data && jsonData.fluxo) {
-        // 🔥 CORREÇÃO: Adiciona o campo 'id' obrigatório
-        if (!jsonData.id) {
-          jsonData.id = jsonData.data;
-        }
-
-        const registroExistente = await db.getRegistro(
-          jsonData.id,
-          this.currentUserId,
-        );
+        if (!jsonData.id) jsonData.id = jsonData.data;
+        const registroExistente = await db.getRegistro(jsonData.id, this.currentUserId);
         if (registroExistente) {
-          if (
-            !confirm(
-              `Registro do dia ${jsonData.data} já existe. Deseja sobrescrever?`,
-            )
-          ) {
+          if (!confirm(`Registro do dia ${jsonData.data} já existe. Deseja sobrescrever?`)) {
             this.showToast("Importação cancelada.", "info");
             this.closeModal();
             return;
           }
         }
         await db.saveRegistro(jsonData, this.currentUserId);
-        this.showToast(
-          `Registro de ${jsonData.data} importado com sucesso!`,
-          "success",
-        );
-      }
-      // Caso 2: Backup completo (contém arrays "registros" ou "fiados")
-      else if (jsonData.registros || jsonData.fiados) {
+        this.showToast(`Registro de ${jsonData.data} importado com sucesso!`, "success");
+      } else if (jsonData.registros || jsonData.fiados) {
         if (jsonData.registros) {
           for (const r of jsonData.registros) {
-            // Garante que cada registro tenha id (fallback para data)
             if (!r.id && r.data) r.id = r.data;
             await db.saveRegistro(r, this.currentUserId);
           }
@@ -1650,14 +1445,10 @@ class LuminarApp {
         }
         this.showToast("Backup completo importado!", "success");
       } else {
-        this.showToast(
-          'Formato de arquivo não reconhecido. O JSON deve conter "data" e "fluxo" ou "registros"/"fiados".',
-          "error",
-        );
+        this.showToast('Formato de arquivo não reconhecido. O JSON deve conter "data" e "fluxo" ou "registros"/"fiados".', "error");
         return;
       }
 
-      // 4. Fecha o modal e recarrega a página atual
       this.closeModal();
       if (this.currentPage === "dashboard") {
         this.renderDashboard(document.getElementById("mainContent"));
@@ -1672,11 +1463,10 @@ class LuminarApp {
 
   // === EXPORT/UTILITIES ===
 
+  // Exporta backup completo em JSON
   async exportData() {
     const data = await db.exportAllData(this.currentUserId);
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
-    });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1686,13 +1476,12 @@ class LuminarApp {
     this.showToast("Backup exportado!", "success");
   }
 
+  // Exporta registros em Markdown para Obsidian
   async exportObsidian() {
     const registros = await db.getAllRegistros(this.currentUserId);
     let markdown = "";
 
-    for (const reg of (registros || []).sort(
-      (a, b) => new Date(b.data) - new Date(a.data),
-    )) {
+    for (const reg of (registros || []).sort((a, b) => new Date(b.data) - new Date(a.data))) {
       markdown += this.registroToMarkdown(reg);
       markdown += "\n---\n\n";
     }
@@ -1707,6 +1496,7 @@ class LuminarApp {
     this.showToast("Exportado para Obsidian!", "success");
   }
 
+  // Converte um registro para Markdown
   registroToMarkdown(reg) {
     if (!reg) return "";
     let md = `#financeiro\n---\ndata: "${this.sanitizeForMarkdown(reg.data)}"\ndia_da_semana: "${this.sanitizeForMarkdown(reg.diaSemana)}"\ntipo: diário\n---\n\n`;
@@ -1729,20 +1519,11 @@ class LuminarApp {
       if (!byCat[item.categoria]) byCat[item.categoria] = [];
       byCat[item.categoria].push(item);
     }
-    const emojis = {
-      bolos: "🎂",
-      brownies: "🍫",
-      brigadeiros: "🍬",
-      mousses: "🧁",
-      copos: "🍧",
-      sacoles: "🍨",
-      bebidas: "🥤",
-    };
+    const emojis = { bolos: "🎂", brownies: "🍫", brigadeiros: "🍬", mousses: "🧁", copos: "🍧", sacoles: "🍨", bebidas: "🥤" };
     for (const [cat, items] of Object.entries(byCat)) {
       md += `### ${emojis[cat] || "📦"} ${cat.charAt(0).toUpperCase() + cat.slice(1)}\n`;
       for (const item of items) {
-        const ef =
-          item.levado > 0 ? Math.round((item.vendido / item.levado) * 100) : 0;
+        const ef = item.levado > 0 ? Math.round((item.vendido / item.levado) * 100) : 0;
         md += `- **${this.sanitizeForMarkdown(item.nome)} (${item.codigo}):** ${item.vendido}un (lev: ${item.levado}, ef: ${ef}%)\n`;
       }
       md += "\n";
@@ -1760,6 +1541,7 @@ class LuminarApp {
     return md;
   }
 
+  // Calcula total de vendas na semana atual
   calcularVendasSemana(registros) {
     const hoje = new Date();
     const inicio = new Date(hoje);
@@ -1767,29 +1549,19 @@ class LuminarApp {
     inicio.setHours(0, 0, 0, 0);
     return (registros || [])
       .filter((r) => new Date(r.data) >= inicio)
-      .reduce(
-        (sum, r) =>
-          sum +
-          this.safeNumber(r.fluxo?.pagosDia) +
-          this.safeNumber(r.fluxo?.recebidosFiados),
-        0,
-      );
+      .reduce((sum, r) => sum + this.safeNumber(r.fluxo?.pagosDia) + this.safeNumber(r.fluxo?.recebidosFiados), 0);
   }
 
+  // Calcula total de vendas no mês atual
   calcularVendasMes(registros) {
     const hoje = new Date();
     const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
     return (registros || [])
       .filter((r) => new Date(r.data) >= inicio)
-      .reduce(
-        (sum, r) =>
-          sum +
-          this.safeNumber(r.fluxo?.pagosDia) +
-          this.safeNumber(r.fluxo?.recebidosFiados),
-        0,
-      );
+      .reduce((sum, r) => sum + this.safeNumber(r.fluxo?.pagosDia) + this.safeNumber(r.fluxo?.recebidosFiados), 0);
   }
 
+  // Exibe toast de notificação
   showToast(message, type = "info") {
     const container = document.getElementById("toastContainer");
     if (!container) return;
@@ -1806,6 +1578,7 @@ class LuminarApp {
     setTimeout(() => toast.remove(), 3000);
   }
 
+  // Abre configurações
   openSettings() {
     this.openModal("settings");
   }
@@ -1813,9 +1586,7 @@ class LuminarApp {
   // ========== ONBOARDING ==========
   startOnboarding() {
     this.onboardingStep = 0;
-    this.onboardingData = {
-      modo: null, // 'expresso' ou 'personalizado'
-    };
+    this.onboardingData = { modo: null };
     this.renderOnboardingScreen();
   }
 
@@ -1833,79 +1604,49 @@ class LuminarApp {
       this.renderStepConfirmacao(),
     ];
 
-    const step = this.onboardingStep;
-    content.innerHTML = steps[step];
-
-    // Configura listeners específicos para cada step
-    this.bindOnboardingListeners(step, content);
+    content.innerHTML = steps[this.onboardingStep];
+    this.bindOnboardingListeners(this.onboardingStep, content);
   }
 
   bindOnboardingListeners(step, content) {
     switch (step) {
-      case 0: // Welcome
-        document
-          .getElementById("btnComecar")
-          ?.addEventListener("click", () => this.nextOnboardingStep());
-        document
-          .getElementById("btnPular")
-          ?.addEventListener("click", () => this.finishOnboarding("expresso"));
+      case 0:
+        document.getElementById("btnComecar")?.addEventListener("click", () => this.nextOnboardingStep());
+        document.getElementById("btnPular")?.addEventListener("click", () => this.finishOnboarding("expresso"));
         break;
-      case 1: // Identificação
-        document
-          .getElementById("btnProximoIdent")
-          ?.addEventListener("click", async () => {
-            const nome = document
-              .getElementById("onboardVendedorNome")
-              .value.trim();
-            const loja = document
-              .getElementById("onboardLojaNome")
-              .value.trim();
-            const tipoVendedor = document.getElementById(
-              "onboardTipoVendedor",
-            ).value;
-            const horarioInicio = document.getElementById(
-              "onboardHorarioInicio",
-            ).value;
-
-            if (nome) this.currentUser.vendedorNome = nome;
-            if (loja) this.currentUser.lojaNome = loja;
-            this.currentUser.tipoVendedor = tipoVendedor;
-            this.currentUser.horarioInicio = horarioInicio;
-
-            // Atualiza no banco
-            await db.createUser(this.currentUser);
-            // Salva também em config para facilitar consultas futuras
-            await db.setConfig(this.currentUserId, "perfil_vendedor", {
-              tipoVendedor,
-              horarioInicio,
-            });
-            this.nextOnboardingStep();
-          });
+      case 1:
+        document.getElementById("btnProximoIdent")?.addEventListener("click", async () => {
+          const nome = document.getElementById("onboardVendedorNome").value.trim();
+          const loja = document.getElementById("onboardLojaNome").value.trim();
+          const tipoVendedor = document.getElementById("onboardTipoVendedor").value;
+          const horarioInicio = document.getElementById("onboardHorarioInicio").value;
+          if (nome) this.currentUser.vendedorNome = nome;
+          if (loja) this.currentUser.lojaNome = loja;
+          this.currentUser.tipoVendedor = tipoVendedor;
+          this.currentUser.horarioInicio = horarioInicio;
+          await db.createUser(this.currentUser);
+          await db.setConfig(this.currentUserId, "perfil_vendedor", { tipoVendedor, horarioInicio });
+          this.nextOnboardingStep();
+        });
         break;
-      case 2: // Modo
-        document
-          .getElementById("btnModoExpresso")
-          ?.addEventListener("click", () => {
-            this.onboardingData.modo = "expresso";
-            this.nextOnboardingStep();
-          });
-        document
-          .getElementById("btnModoPersonalizado")
-          ?.addEventListener("click", () => {
-            this.onboardingData.modo = "personalizado";
-            this.nextOnboardingStep();
-          });
+      case 2:
+        document.getElementById("btnModoExpresso")?.addEventListener("click", () => {
+          this.onboardingData.modo = "expresso";
+          this.nextOnboardingStep();
+        });
+        document.getElementById("btnModoPersonalizado")?.addEventListener("click", () => {
+          this.onboardingData.modo = "personalizado";
+          this.nextOnboardingStep();
+        });
         break;
-      case 3: // Confirmação
-        document
-          .getElementById("btnIrDashboard")
-          ?.addEventListener("click", () => {
-            if (this.onboardingData.modo === "expresso") {
-              this.finishOnboarding("expresso");
-            } else {
-              this.finishOnboarding("personalizado");
-            }
-          });
+      case 3:
+        document.getElementById("btnIrDashboard")?.addEventListener("click", () => {
+          if (this.onboardingData.modo === "expresso") {
+            this.finishOnboarding("expresso");
+          } else {
+            this.finishOnboarding("personalizado");
+          }
+        });
         break;
     }
   }
@@ -1918,22 +1659,16 @@ class LuminarApp {
   finishOnboarding(modo) {
     localStorage.setItem("luminar_onboarding_completed", "true");
     this.closeModal();
-
     if (modo === "expresso") {
       this.hideLoginScreenAndShowApp();
       this.navigate("dashboard");
     } else {
       this.hideLoginScreenAndShowApp();
-      // Abre Configurações diretamente na aba Cardápio
       this.openModal("settings", "cardapio");
-      this.showToast(
-        "Agora cadastre seus produtos na aba Cardápio. Depois ajuste as metas.",
-        "info",
-      );
+      this.showToast("Agora cadastre seus produtos na aba Cardápio. Depois ajuste as metas.", "info");
     }
   }
 
-  // Métodos de renderização das telas (HTML)
   renderStepWelcome() {
     return `
       <div class="p-5 text-center">
@@ -1949,32 +1684,31 @@ class LuminarApp {
   renderStepIdentificacao() {
     const tipoVendedor = this.currentUser?.tipoVendedor || "fixo";
     const horarioInicio = this.currentUser?.horarioInicio || "16:00";
-
     return `
-        <div class="p-5">
-            <h3 class="text-lg font-bold text-gray-800 mb-4">Conte-nos um pouco sobre você</h3>
-            <div class="mb-3">
-                <label class="block text-sm font-medium text-gray-600 mb-1">Seu nome (ou apelido)</label>
-                <input type="text" id="onboardVendedorNome" value="${this.escapeHtml(this.currentUser?.vendedorNome || "")}" placeholder="Ex: Ana" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div class="mb-3">
-                <label class="block text-sm font-medium text-gray-600 mb-1">Nome da sua loja</label>
-                <input type="text" id="onboardLojaNome" value="${this.escapeHtml(this.currentUser?.lojaNome || "")}" placeholder="Ex: Doces da Ana" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div class="mb-3">
-                <label class="block text-sm font-medium text-gray-600 mb-1">Como você costuma vender?</label>
-                <select id="onboardTipoVendedor" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    <option value="fixo" ${tipoVendedor === "fixo" ? "selected" : ""}>🏪 Ponto fixo (barraca, loja, quiosque)</option>
-                    <option value="ambulante" ${tipoVendedor === "ambulante" ? "selected" : ""}>🚶 Ambulante (rota, isopor, porta a porta)</option>
-                </select>
-                <p class="text-xs text-gray-500 mt-1">Usado futuramente para mapas de calor e estatísticas.</p>
-            </div>
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-600 mb-1">Horário habitual de início das vendas</label>
-                <input type="time" id="onboardHorarioInicio" value="${horarioInicio}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <button id="btnProximoIdent" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Próximo</button>
+      <div class="p-5">
+        <h3 class="text-lg font-bold text-gray-800 mb-4">Conte-nos um pouco sobre você</h3>
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-gray-600 mb-1">Seu nome (ou apelido)</label>
+          <input type="text" id="onboardVendedorNome" value="${this.escapeHtml(this.currentUser?.vendedorNome || "")}" placeholder="Ex: Ana" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
         </div>
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-gray-600 mb-1">Nome da sua loja</label>
+          <input type="text" id="onboardLojaNome" value="${this.escapeHtml(this.currentUser?.lojaNome || "")}" placeholder="Ex: Doces da Ana" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+        </div>
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-gray-600 mb-1">Como você costuma vender?</label>
+          <select id="onboardTipoVendedor" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            <option value="fixo" ${tipoVendedor === "fixo" ? "selected" : ""}>🏪 Ponto fixo (barraca, loja, quiosque)</option>
+            <option value="ambulante" ${tipoVendedor === "ambulante" ? "selected" : ""}>🚶 Ambulante (rota, isopor, porta a porta)</option>
+          </select>
+          <p class="text-xs text-gray-500 mt-1">Usado futuramente para mapas de calor e estatísticas.</p>
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-600 mb-1">Horário habitual de início das vendas</label>
+          <input type="time" id="onboardHorarioInicio" value="${horarioInicio}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+        </div>
+        <button id="btnProximoIdent" class="w-full btn-primary text-white py-3 rounded-xl font-semibold">Próximo</button>
+      </div>
     `;
   }
 
@@ -1999,11 +1733,9 @@ class LuminarApp {
   renderStepConfirmacao() {
     const modo = this.onboardingData.modo;
     const titulo = modo === "expresso" ? "Tudo pronto!" : "Modo Personalizado";
-    const descricao =
-      modo === "expresso"
-        ? "Seu app está configurado com os produtos e metas padrão. Você já pode começar a vender!"
-        : "Agora você pode definir suas metas e cadastrar seus produtos nas Configurações.";
-
+    const descricao = modo === "expresso"
+      ? "Seu app está configurado com os produtos e metas padrão. Você já pode começar a vender!"
+      : "Agora você pode definir suas metas e cadastrar seus produtos nas Configurações.";
     return `
       <div class="p-5 text-center">
         <span class="text-4xl mb-3 block">🎉</span>
@@ -2014,6 +1746,7 @@ class LuminarApp {
     `;
   }
 
+  // Salva configuração de clima
   async salvarConfigClima() {
     const cidade = document.getElementById("cidadeClima").value.trim();
     const usarClima = document.getElementById("indClima").checked;
@@ -2023,7 +1756,6 @@ class LuminarApp {
     let lon = this.climaConfig?.lon;
 
     if (cidade && cidade !== this.climaConfig?.cidade) {
-      // Verifica se é coordenada (contém vírgula e números)
       if (cidade.includes(",")) {
         const partes = cidade.split(",").map((s) => parseFloat(s.trim()));
         if (partes.length === 2 && !isNaN(partes[0]) && !isNaN(partes[1])) {
@@ -2033,43 +1765,35 @@ class LuminarApp {
       } else {
         try {
           const coords = await weather.buscarCoordenadas(cidade);
-          if (coords) {
-            lat = coords.lat;
-            lon = coords.lon;
-          }
+          if (coords) { lat = coords.lat; lon = coords.lon; }
         } catch (e) {
-          console.warn(
-            "Não foi possível obter coordenadas, mantendo anteriores.",
-          );
+          console.warn("Não foi possível obter coordenadas, mantendo anteriores.");
         }
       }
     }
 
     this.climaConfig = { cidade, lat, lon };
     this.indicadores = { usarClima, usarDiaSemana };
-
     await db.setConfig(this.currentUserId, "climaConfig", this.climaConfig);
     await db.setConfig(this.currentUserId, "indicadores", this.indicadores);
 
-    // Atualiza o weatherData com a nova localização
     if (lat && lon) {
       this.weatherData = await weather.getWeather(lat, lon);
     }
 
     this.closeModal();
     this.showToast("Configurações de clima salvas!", "success");
-    if (this.currentPage === "dashboard")
-      this.renderDashboard(document.getElementById("mainContent"));
+    if (this.currentPage === "dashboard") this.renderDashboard(document.getElementById("mainContent"));
   }
 
+  // Placeholder para sincronização
   async syncData() {
     this.showToast("Dados sincronizados localmente", "success");
   }
 
+  // Obtém sugestão de mix para uma data específica
   async getMixSuggestionForDate(data, climaData = null) {
-    const diaSemana = new Date(data + "T12:00:00").toLocaleDateString("pt-BR", {
-      weekday: "long",
-    });
+    const diaSemana = new Date(data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long" });
     const clima = climaData || this.weatherData;
 
     return await mixEngine.generateSuggestion({
@@ -2083,15 +1807,13 @@ class LuminarApp {
     });
   }
 
-  // === CRUD DE PRODUTOS (Modal Configurações) ===
-
+  // === CRUD DE PRODUTOS ===
   renderListaProdutosSettings() {
     if (!this.produtos || this.produtos.length === 0) {
       return '<p class="text-gray-500 text-center py-2">Nenhum produto cadastrado.</p>';
     }
     return this.produtos
       .map((prod) => {
-        // Busca o nome da unidade base, se diferente do próprio produto
         let infoExtra = "";
         if (prod.unidade_base_id && prod.unidade_base_id !== prod.id) {
           const base = this.produtos.find((p) => p.id === prod.unidade_base_id);
@@ -2100,126 +1822,106 @@ class LuminarApp {
           }
         }
         return `
-            <div class="flex items-center justify-between bg-gray-50 p-2 rounded-lg">
-                <div class="flex-1">
-                    <div class="font-medium text-sm">${this.escapeHtml(prod.nome)}</div>
-                    <div class="text-xs text-gray-500">${prod.codigo} • R$ ${prod.preco.toFixed(2)} • ${prod.categoria}</div>
-                    ${infoExtra}
-                </div>
-                <div class="flex gap-1">
-                    <button data-produto-id="${prod.id}" class="btn-edit-produto text-blue-600 p-1">✏️</button>
-                    <button data-produto-id="${prod.id}" class="btn-delete-produto text-red-600 p-1">🗑️</button>
-                </div>
+          <div class="flex items-center justify-between bg-gray-50 p-2 rounded-lg">
+            <div class="flex-1">
+              <div class="font-medium text-sm">${this.escapeHtml(prod.nome)}</div>
+              <div class="text-xs text-gray-500">${prod.codigo} • R$ ${prod.preco.toFixed(2)} • ${prod.categoria}</div>
+              ${infoExtra}
             </div>
+            <div class="flex gap-1">
+              <button data-produto-id="${prod.id}" class="btn-edit-produto text-blue-600 p-1">✏️</button>
+              <button data-produto-id="${prod.id}" class="btn-delete-produto text-red-600 p-1">🗑️</button>
+            </div>
+          </div>
         `;
       })
       .join("");
   }
 
+  // Modal de criação/edição de produto
   abrirModalProduto(produto = null) {
     const modal = document.getElementById("modal");
     const content = document.getElementById("modalContent");
     if (!modal || !content) return;
 
-    const categorias = [
-      "bolos",
-      "brownies",
-      "brigadeiros",
-      "mousses",
-      "copos",
-      "sacoles",
-      "bebidas",
-    ];
+    const categorias = ["bolos", "brownies", "brigadeiros", "mousses", "copos", "sacoles", "bebidas"];
     const isEdit = produto !== null;
 
-    // Lista de produtos disponíveis para selecionar como "Unidade Base"
     const opcoesUnidadeBase = this.produtos
-      .filter((p) => p.id !== (produto?.id || null)) // evita referência circular
-      .map(
-        (p) =>
-          `<option value="${p.id}" ${isEdit && produto.unidade_base_id === p.id ? "selected" : ""}>${this.escapeHtml(p.nome)} (${p.codigo})</option>`,
-      )
+      .filter((p) => p.id !== (produto?.id || null))
+      .map((p) => `<option value="${p.id}" ${isEdit && produto.unidade_base_id === p.id ? "selected" : ""}>${this.escapeHtml(p.nome)} (${p.codigo})</option>`)
       .join("");
 
     content.innerHTML = `
-        <div class="p-5">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-800">${isEdit ? "Editar" : "Novo"} Produto</h3>
-                <button id="btnCloseModal" class="text-gray-500 text-2xl">&times;</button>
-            </div>
-            <form id="formProduto">
-                <input type="hidden" id="produtoId" value="${isEdit ? produto.id : ""}">
-                <div class="mb-3">
-                    <label class="block text-sm font-medium text-gray-600 mb-1">Nome</label>
-                    <input type="text" id="produtoNome" value="${isEdit ? this.escapeHtml(produto.nome) : ""}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                </div>
-                <div class="grid grid-cols-2 gap-3 mb-3">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Código</label>
-                        <input type="text" id="produtoCodigo" value="${isEdit ? produto.codigo : ""}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Preço (R$)</label>
-                        <input type="number" step="0.01" id="produtoPreco" value="${isEdit ? produto.preco : ""}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                </div>
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-600 mb-1">Categoria</label>
-                    <select id="produtoCategoria" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                        ${categorias.map((cat) => `<option value="${cat}" ${isEdit && produto.categoria === cat ? "selected" : ""}>${cat}</option>`).join("")}
-                    </select>
-                </div>
-
-                <!-- 🔥 Novos campos: Unidade Base e Fator de Conversão -->
-                <div class="border-t border-gray-200 pt-4 mt-2">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-sm font-medium text-gray-700">⚙️ Configuração Avançada</span>
-                        <button type="button" id="btnHelpAvancado" class="text-gray-400 hover:text-gray-600 text-lg" title="O que é isso?">❓</button>
-                    </div>
-                    <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Unidade Base (referência de produção)</label>
-                        <select id="produtoUnidadeBase" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                            <option value="" ${!isEdit || !produto.unidade_base_id ? "selected" : ""}>-- Nenhuma (produto independente) --</option>
-                            ${opcoesUnidadeBase}
-                        </select>
-                        <p class="text-xs text-gray-500 mt-1">Ex: para "Caixa de Brigadeiro", selecione "Brigadeiro Avulso".</p>
-                    </div>
-                    <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-600 mb-1">Fator de Conversão</label>
-                        <input type="number" min="1" step="1" id="produtoFatorConversao" value="${isEdit && produto.fator_conversao ? produto.fator_conversao : 1}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                        <p class="text-xs text-gray-500 mt-1">Quantas unidades base formam 1 unidade deste produto? (Ex: 1 Caixa = 4 Avulsos → fator 4)</p>
-                    </div>
-                </div>
-
-                <button type="submit" class="w-full btn-primary text-white py-3 rounded-xl font-semibold mt-4">
-                    ${isEdit ? "Salvar Alterações" : "Adicionar Produto"}
-                </button>
-            </form>
+      <div class="p-5">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-bold text-gray-800">${isEdit ? "Editar" : "Novo"} Produto</h3>
+          <button id="btnCloseModal" class="text-gray-500 text-2xl">&times;</button>
         </div>
+        <form id="formProduto">
+          <input type="hidden" id="produtoId" value="${isEdit ? produto.id : ""}">
+          <div class="mb-3">
+            <label class="block text-sm font-medium text-gray-600 mb-1">Nome</label>
+            <input type="text" id="produtoNome" value="${isEdit ? this.escapeHtml(produto.nome) : ""}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-600 mb-1">Código</label>
+              <input type="text" id="produtoCodigo" value="${isEdit ? produto.codigo : ""}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-600 mb-1">Preço (R$)</label>
+              <input type="number" step="0.01" id="produtoPreco" value="${isEdit ? produto.preco : ""}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            </div>
+          </div>
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-600 mb-1">Categoria</label>
+            <select id="produtoCategoria" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+              ${categorias.map((cat) => `<option value="${cat}" ${isEdit && produto.categoria === cat ? "selected" : ""}>${cat}</option>`).join("")}
+            </select>
+          </div>
+          <div class="border-t border-gray-200 pt-4 mt-2">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-medium text-gray-700">⚙️ Configuração Avançada</span>
+              <button type="button" id="btnHelpAvancado" class="text-gray-400 hover:text-gray-600 text-lg" title="O que é isso?">❓</button>
+            </div>
+            <div class="mb-3">
+              <label class="block text-sm font-medium text-gray-600 mb-1">Unidade Base (referência de produção)</label>
+              <select id="produtoUnidadeBase" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                <option value="" ${!isEdit || !produto.unidade_base_id ? "selected" : ""}>-- Nenhuma (produto independente) --</option>
+                ${opcoesUnidadeBase}
+              </select>
+              <p class="text-xs text-gray-500 mt-1">Ex: para "Caixa de Brigadeiro", selecione "Brigadeiro Avulso".</p>
+            </div>
+            <div class="mb-3">
+              <label class="block text-sm font-medium text-gray-600 mb-1">Fator de Conversão</label>
+              <input type="number" min="1" step="1" id="produtoFatorConversao" value="${isEdit && produto.fator_conversao ? produto.fator_conversao : 1}" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+              <p class="text-xs text-gray-500 mt-1">Quantas unidades base formam 1 unidade deste produto? (Ex: 1 Caixa = 4 Avulsos → fator 4)</p>
+            </div>
+          </div>
+          <button type="submit" class="w-full btn-primary text-white py-3 rounded-xl font-semibold mt-4">
+            ${isEdit ? "Salvar Alterações" : "Adicionar Produto"}
+          </button>
+        </form>
+      </div>
     `;
 
-    // Listener para o botão de ajuda
-    document
-      .getElementById("btnHelpAvancado")
-      ?.addEventListener("click", () => {
-        alert(
-          "🔍 Unidade Base e Fator de Conversão:\n\n" +
-            "Use isto para produtos que são vendidos em embalagens diferentes da unidade de produção.\n\n" +
-            "Exemplo: Você produz 'Brigadeiro Avulso' (unidade base), mas vende 'Caixa com 4'.\n" +
-            "- Unidade Base: 'Brigadeiro Avulso'\n" +
-            "- Fator de Conversão: 4\n\n" +
-            "O sistema usará essas informações para sugerir quantas caixas levar com base na eficiência do avulso.",
-        );
-      });
+    document.getElementById("btnHelpAvancado")?.addEventListener("click", () => {
+      alert(
+        "🔍 Unidade Base e Fator de Conversão:\n\n" +
+        "Use isto para produtos que são vendidos em embalagens diferentes da unidade de produção.\n\n" +
+        "Exemplo: Você produz 'Brigadeiro Avulso' (unidade base), mas vende 'Caixa com 4'.\n" +
+        "- Unidade Base: 'Brigadeiro Avulso'\n" +
+        "- Fator de Conversão: 4\n\n" +
+        "O sistema usará essas informações para sugerir quantas caixas levar com base na eficiência do avulso."
+      );
+    });
 
-    document
-      .getElementById("formProduto")
-      .addEventListener("submit", (e) => this.salvarProduto(e));
-    document
-      .getElementById("btnCloseModal")
-      .addEventListener("click", () => this.closeModal());
+    document.getElementById("formProduto").addEventListener("submit", (e) => this.salvarProduto(e));
+    document.getElementById("btnCloseModal").addEventListener("click", () => this.closeModal());
   }
 
+  // Salva (cria ou edita) um produto
   async salvarProduto(event) {
     event.preventDefault();
     const id = document.getElementById("produtoId").value;
@@ -2228,14 +1930,10 @@ class LuminarApp {
     const preco = parseFloat(document.getElementById("produtoPreco").value);
     const categoria = document.getElementById("produtoCategoria").value;
     const unidadeBaseId = document.getElementById("produtoUnidadeBase").value;
-    const fatorConversao =
-      parseInt(document.getElementById("produtoFatorConversao").value) || 1;
+    const fatorConversao = parseInt(document.getElementById("produtoFatorConversao").value) || 1;
 
     if (!nome || !codigo || isNaN(preco) || preco <= 0) {
-      this.showToast(
-        "Preencha todos os campos obrigatórios corretamente.",
-        "error",
-      );
+      this.showToast("Preencha todos os campos obrigatórios corretamente.", "error");
       return;
     }
 
@@ -2245,7 +1943,7 @@ class LuminarApp {
       nome,
       codigo,
       preco,
-      unidade_base_id: unidadeBaseId || id, // se vazio, assume o próprio id
+      unidade_base_id: unidadeBaseId || id,
       fator_conversao: fatorConversao,
     };
 
@@ -2264,15 +1962,16 @@ class LuminarApp {
     }
   }
 
+  // Exclui um produto
   async excluirProduto(produtoId) {
     if (!confirm("Tem certeza que deseja excluir este produto?")) return;
     this.produtos = this.produtos.filter((p) => p.id !== produtoId);
     await db.setConfig(this.currentUserId, "produtos", this.produtos);
     this.showToast("Produto removido.", "info");
-    // Recarrega a lista no modal de configurações
     this.openModal("settings");
   }
-  // Solicita permissão e obtém coordenadas atuais do dispositivo
+
+  // Geolocalização
   async obterLocalizacaoAtual() {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
@@ -2286,34 +1985,26 @@ class LuminarApp {
             lon: position.coords.longitude,
           });
         },
-        (error) => {
-          reject(error);
-        },
+        (error) => reject(error),
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
       );
     });
   }
 
+  // Configura o menu hambúrguer do header
   setupHeaderMenu() {
     const menuBtn = document.getElementById("headerMenuBtn");
     const dropdown = document.getElementById("headerMenuDropdown");
     if (!menuBtn || !dropdown) return;
 
-    // Toggle dropdown
     menuBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       dropdown.classList.toggle("hidden");
     });
 
-    // Fecha ao clicar fora
-    document.addEventListener("click", () => {
-      dropdown.classList.add("hidden");
-    });
-
-    // Impede que cliques dentro do dropdown o fechem
+    document.addEventListener("click", () => dropdown.classList.add("hidden"));
     dropdown.addEventListener("click", (e) => e.stopPropagation());
 
-    // Ações dos itens
     document.getElementById("menuSync")?.addEventListener("click", () => {
       dropdown.classList.add("hidden");
       this.syncData();
@@ -2332,6 +2023,7 @@ class LuminarApp {
     });
   }
 
+  // Logout
   logout() {
     localStorage.removeItem("luminar_userId");
     localStorage.removeItem("luminar_username");
@@ -2342,10 +2034,10 @@ class LuminarApp {
   }
 }
 
-// Create global instance
+// Cria instância global
 const app = new LuminarApp();
 
-// Initialize after DOM is ready
+// Inicializa quando o DOM estiver pronto
 document.addEventListener("DOMContentLoaded", () => {
   app.init();
 });
