@@ -1,54 +1,110 @@
 {
+  // ===========================================================================
+  // PROJETO DE ESTUDOS: Manifesto Web App (manifest.json)
+  // ===========================================================================
+  // Este arquivo descreve como o aplicativo deve se comportar quando
+  // "instalado" no dispositivo do usuário. É a chave para transformar
+  // um site comum em uma Progressive Web App (PWA) que pode ser
+  // adicionada à tela inicial, executada em modo standalone e até
+  // funcionar offline (com o auxílio do Service Worker).
+  //
+  // Cada campo é interpretado pelo navegador para definir o nome,
+  // ícones, cores, orientação e outras características da app.
+
+  // Identificador único (não oficial, mas útil para organização)
   "id": "luminar-pwa-v1",
+
+  // Nome completo exibido na tela de instalação e splash screen
   "name": "Luminar - Gestão de Vendas",
+
+  // Nome curto usado abaixo do ícone quando espaço é limitado
   "short_name": "Luminar",
+
+  // Descrição que aparece na interface de instalação (lojas, avisos)
   "description": "Sistema de gestão para vendedores de rua - controle de vendas, fiados e sugestão de mix",
+
+  // URL inicial ao abrir a app (deve ser relativa ao escopo)
   "start_url": "/",
+
+  // Escopo da aplicação: URLs dentro deste caminho são consideradas parte da app
   "scope": "/",
+
+  // Modo de exibição:
+  // - "standalone": parece um app nativo, sem barra de endereço do navegador
+  // - "fullscreen": ainda mais imersivo
+  // - "minimal-ui": mantém controles mínimos
+  // - "browser": abas normais
   "display": "standalone",
+
+  // Cor de fundo da splash screen (enquanto a página carrega)
   "background_color": "#667eea",
+
+  // Cor da barra do sistema (Android) e toolbar (quando aplicável)
   "theme_color": "#667eea",
+
+  // Orientação preferida: "portrait" (vertical) ou "landscape" (horizontal)
   "orientation": "portrait",
+
+  // Se true, indica que a app prefere aplicativos relacionados da loja.
+  // false = não sugere alternativa nativa.
   "prefer_related_applications": false,
+
+  // Ícones usados para a tela inicial, splash screen, alternador de apps etc.
+  // O navegador escolhe o tamanho adequado conforme o dispositivo.
   "icons": [
     {
       "src": "icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
+      // "purpose": "any" (qualquer uso) e "maskable" (pode ser cortado/mascarado)
       "purpose": "any maskable"
     },
     {
       "src": "icons/icon-512x512.png",
-      "sizes": "512x512", 
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
+      // Ícone vetorial (SVG) que se adapta a qualquer tamanho sem perder qualidade
       "src": "icons/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ],
+
+  // Screenshots usados em lojas ou na confirmação de instalação (diálogo do navegador)
   "screenshots": [
     {
       "src": "screenshots/dashboard.png",
       "sizes": "1080x1920",
       "type": "image/png",
-      "form_factor": "narrow",
+      "form_factor": "narrow", // "narrow" para telas estreitas (mobile), "wide" para desktop
       "label": "Dashboard com metas e mix sugerido"
     }
   ],
+
+  // Atalhos que aparecem no menu de contexto do ícone (ex.: pressionar longo no Android)
   "shortcuts": [
     {
       "name": "Novo Registro",
       "short_name": "Registrar",
       "description": "Registrar vendas do dia",
-      "url": "/?page=registrar",
-      "icons": [{ "src": "icons/icon-192x192.png", "sizes": "192x192" }]
+      "url": "/?page=registrar", // Pode conter parâmetros que a SPA interpreta
+      "icons": [
+        { "src": "icons/icon-192x192.png", "sizes": "192x192" }
+      ]
     }
   ],
+
+  // Categorias para listagem em lojas de aplicativos (quando suportado)
+  // Útil para PWAs listadas na Google Play Store via Trusted Web Activity
   "categories": ["business", "finance", "productivity", "food", "shopping"],
+
+  // Idioma principal do conteúdo
   "lang": "pt-BR",
+
+  // Direção do texto: "ltr" (da esquerda para direita) ou "rtl" (direita para esquerda)
   "dir": "ltr"
 }
