@@ -1,43 +1,63 @@
 <!doctype html>
 <html lang="pt-BR">
   <head>
+    <!-- ============================================================ -->
+    <!-- PROJETO DE ESTUDOS: Luminar - Painel de Vendas (versão PWA)  -->
+    ================================================================
+         Este arquivo é um exemplo didático de uma aplicação web
+         progressiva (PWA) para gestão de vendas. Ele contém:
+           • Estrutura base com meta tags para responsividade e PWA
+           • Tailwind CSS via CDN + estilos customizados essenciais
+           • Chart.js para gráficos
+           • Navegação fixa inferior com navegação SPA simulada
+           • Persistência offline com Service Worker e LocalStorage
+           • Preparação para funcionamento offline (indicador, cache)
+
+         Sinta-se livre para estudar cada bloco comentado.
+    ================================================================ -->
+
     <meta charset="UTF-8" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
+    <!-- Define a cor da barra de endereço no mobile -->
     <meta name="theme-color" content="#667eea" />
     <meta name="description" content="Sistema Luminar - Gestão de Vendas" />
     <title>Luminar - Painel de Vendas</title>
 
-    <!-- PWA Manifest -->
+    <!-- ==================== PWA: Manifest e ícones ==================== -->
+    <!-- O manifest.json informa ao navegador como "instalar" a web app -->
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="icons/icon-192x192.png" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
 
-    <!-- Chart.js -->
+    <!-- ==================== Dependências via CDN ==================== -->
+    <!-- Chart.js: biblioteca de gráficos (leve e flexível) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <!-- Tailwind CSS via CDN -->
+    <!-- Tailwind CSS: framework utilitário carregado via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
 
+    <!-- ==================== Estilos Complementares ==================== -->
     <style>
-      /* Custom styles beyond Tailwind */
+      /* ========== Reset e acessibilidade ========== */
+      /* Remove o triângulo padrão do <summary> no Chrome */
       summary::-webkit-details-marker {
-        display: none; /* Remove o triângulo padrão no Chrome */
+        display: none;
       }
+      /* Remove o marcador no Firefox */
       summary {
-        list-style: none; /* Remove o marcador no Firefox */
+        list-style: none;
       }
+
+      /* ========== Utilitários visuais ========== */
       .gradient-bg {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       }
-
       .card-shadow {
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
       }
-
       .progress-gradient {
         background: linear-gradient(
           90deg,
@@ -46,15 +66,14 @@
           #48bb78 100%
         );
       }
-
       .btn-primary {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       }
 
+      /* ========== Animações ========== */
       .modal-enter {
         animation: slideUp 0.3s ease;
       }
-
       @keyframes slideUp {
         from {
           transform: translateY(100%);
@@ -66,12 +85,13 @@
         }
       }
 
+      /* ========== Navegação (tabs ativas) ========== */
       .tab-active {
         border-bottom: 3px solid #667eea;
         color: #667eea;
       }
 
-      /* Hide scrollbar but allow scrolling */
+      /* ========== Ocultar scrollbar (para carrosséis) ========== */
       .no-scrollbar::-webkit-scrollbar {
         display: none;
       }
@@ -80,28 +100,30 @@
         scrollbar-width: none;
       }
 
-      /* Touch-friendly inputs */
+      /* ========== Touch-friendly: previne zoom indesejado no iOS ========== */
       input,
       select,
       textarea,
       button {
-        font-size: 16px; /* Prevents zoom on iOS */
+        font-size: 16px;
       }
 
-      /* Offline indicator */
+      /* ========== Indicador offline (escondido por padrão) ========== */
       .offline-indicator {
         display: none;
       }
+      /* Quando o body tem a classe .offline, mostra o aviso */
       .offline .offline-indicator {
         display: flex;
       }
+
+      /* ========== Controle de visibilidade de header/nav (ex.: fullscreen) ========== */
       header.nav-hidden,
       nav.nav-hidden {
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
       }
-
       header.nav-visible,
       nav.nav-visible {
         display: flex !important;
@@ -109,7 +131,8 @@
         height: auto !important;
       }
 
-      /* Navigation fixed positioning - CRÍTICO */
+      /* ================= LAYOUT CRÍTICO DA NAVEGAÇÃO ================= */
+      /* A navegação inferior é fixa e deve sempre ocupar toda a largura */
       nav {
         position: fixed;
         bottom: 0;
@@ -123,7 +146,7 @@
         padding: 0;
         margin: 0;
       }
-
+      /* Flex container dos botões da nav */
       nav > div {
         width: 100%;
         display: flex;
@@ -132,8 +155,7 @@
         padding: 8px 0;
         gap: 0;
       }
-
-      /* Nav buttons - garantir espaçamento consistente */
+      /* Cada botão ocupa espaço igual e tem um toque confortável */
       .nav-btn {
         flex: 1;
         display: flex;
@@ -142,38 +164,36 @@
         justify-content: center;
         padding: 8px 4px;
         transition: all 0.2s ease;
-        min-height: 60px;
+        min-height: 60px; /* área de toque mínima */
       }
-
       .nav-btn span:first-child {
         font-size: 24px;
         line-height: 1;
         margin-bottom: 4px;
       }
-
       .nav-btn span:last-child {
         font-size: 11px;
         font-weight: 500;
         text-align: center;
       }
 
-      /* Header visibility */
+      /* ================= CABEÇALHO STICKY ================= */
       header {
         position: sticky;
         top: 0;
         z-index: 40;
       }
 
-      /* Main content - garantir padding para nav fixa */
+      /* ================= ESPAÇO PARA A NAV FIXA ================= */
+      /* Garante que o conteúdo não fique atrás da navegação */
       #mainContent {
         padding-bottom: 80px;
       }
 
-      /* Corrige posicionamento do menu hambúrguer */
+      /* ================= MENU HAMBÚRGUER NO HEADER ================= */
       header .relative {
         position: relative;
       }
-
       #headerMenuDropdown {
         position: absolute;
         right: 0;
@@ -185,32 +205,40 @@
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         z-index: 100;
       }
-
       #headerMenuBtn {
         flex-shrink: 0;
       }
     </style>
   </head>
+
+  <!-- ================================================================== -->
+  <!-- BODY: note a classe "bg-gray-100 min-h-screen" do Tailwind.        -->
+  <!-- O indicador offline ficará sobreposto (position fixed).             -->
+  <!-- ================================================================== -->
   <body class="bg-gray-100 min-h-screen">
-    <!-- Offline Indicator -->
+    <!-- ==================== INDICADOR DE MODO OFFLINE ==================== -->
+    <!-- Só aparece quando o body tem classe "offline" (controlado por JS) -->
     <div
       class="offline-indicator fixed top-0 left-0 right-0 bg-yellow-500 text-white text-center py-2 z-50 text-sm font-medium"
     >
       ⚠️ Modo Offline - Dados salvos localmente
     </div>
 
-    <!-- App Container -->
+    <!-- ==================== CONTAINER DA APLICAÇÃO ==================== -->
+    <!-- "max-w-md mx-auto" centraliza em telas maiores, simulando mobile -->
     <div id="app" class="max-w-md mx-auto bg-gray-50 min-h-screen">
-      <!-- Header -->
+      
+      <!-- ==================== HEADER (STICKY) ==================== -->
       <header class="gradient-bg text-white p-4 sticky top-0 z-40 relative">
-        
-        <div class="pr-14 w-full"> 
+        <!-- Nome do negócio e data dinâmica -->
+        <div class="pr-14 w-full">
           <h1 class="text-xl font-bold leading-tight truncate">Doçuras de Artemis</h1>
           <p class="text-sm opacity-80 leading-tight mt-1 truncate" id="currentDate">
             Carregando...
           </p>
         </div>
 
+        <!-- Botão de menu hambúrguer (canto superior direito) -->
         <div class="absolute right-4 top-4">
           <button
             id="headerMenuBtn"
@@ -219,29 +247,41 @@
           >
             ☰
           </button>
+          <!-- Dropdown com opções de sistema -->
           <div
             id="headerMenuDropdown"
             class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 hidden z-50"
           >
-            <button id="menuSync" class="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm">🔄 Sincronizar</button>
-            <button id="menuBackup" class="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm">💾 Backup (JSON)</button>
-            <button id="menuSettings" class="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm">⚙️ Configurações</button>
+            <button id="menuSync" class="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm">
+              🔄 Sincronizar
+            </button>
+            <button id="menuBackup" class="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm">
+              💾 Backup (JSON)
+            </button>
+            <button id="menuSettings" class="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm">
+              ⚙️ Configurações
+            </button>
             <hr class="my-1 border-gray-100" />
-            <button id="menuLogout" class="w-full text-left px-4 py-2 text-red-600 hover:bg-red-50 text-sm">🚪 Sair</button>
+            <button id="menuLogout" class="w-full text-left px-4 py-2 text-red-600 hover:bg-red-50 text-sm">
+              🚪 Sair
+            </button>
           </div>
         </div>
       </header>
 
-      <!-- Main Content Area -->
+      <!-- ==================== ÁREA PRINCIPAL DE CONTEÚDO ==================== -->
+      <!-- O conteúdo é carregado dinamicamente via JS (SPA simplificada) -->
       <main id="mainContent" class="p-4 space-y-4">
-        <!-- Content loaded dynamically -->
+        <!-- Exemplo de conteúdo estático, substituído pelo router JS -->
       </main>
 
-      <!-- Bottom Navigation -->
+      <!-- ==================== NAVEGAÇÃO INFERIOR FIXA ==================== -->
+      <!-- Navegação "mobile-first" sempre visível, substituindo abas superiores -->
       <nav
         class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 max-w-md mx-auto"
       >
         <div class="flex justify-around py-2">
+          <!-- Cada botão chama app.navigate('pagina') definido no app.js -->
           <button
             onclick="app.navigate('dashboard')"
             class="nav-btn flex flex-col items-center p-2 text-gray-500"
@@ -278,26 +318,38 @@
       </nav>
     </div>
 
-    <!-- Modal Container -->
+    <!-- ==================== MODAL GENÉRICO ==================== -->
+    <!-- Inicialmente oculto, usado para exibir formulários e detalhes -->
     <div
       id="modal"
       class="fixed inset-0 bg-black/50 z-50 hidden flex items-end sm:items-center justify-center p-4"
     >
+      <!-- Conteúdo injetado dinamicamente com a animação modal-enter -->
       <div
         id="modalContent"
         class="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto modal-enter"
       >
-        <!-- Modal content loaded dynamically -->
+        <!-- preenchido pelo JS -->
       </div>
     </div>
 
-    <!-- Toast Container -->
+    <!-- ==================== TOAST (NOTIFICAÇÕES) ==================== -->
+    <!-- Container para mensagens temporárias (sucesso, erro etc.) -->
     <div
       id="toastContainer"
       class="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 space-y-2"
     ></div>
 
-    <!-- Scripts -->
+    <!-- ==================== SCRIPTS DA APLICAÇÃO ==================== -->
+    <!-- 
+      Ordem de carregamento pensada para dependências:
+      1. Utilitários gerais (formatação, máscaras)
+      2. Camada de banco de dados (IndexedDB ou LocalStorage)
+      3. Integração com clima (se existente)
+      4. Motor de mixes (lógica de negócio)
+      5. Health-check (monitoramento PWA)
+      6. App principal (roteamento, UI, eventos)
+    -->
     <script src="js/utils.js"></script>
     <script src="js/db.js"></script>
     <script src="js/weather.js"></script>
@@ -305,14 +357,15 @@
     <script src="js/health-check.js"></script>
     <script src="js/app.js"></script>
 
+    <!-- ==================== REGISTRO DO SERVICE WORKER ==================== -->
+    <!-- O Service Worker é o coração do funcionamento offline da PWA -->
     <script>
-      // Register Service Worker
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
           navigator.serviceWorker
             .register("sw.js")
-            .then((reg) => console.log("SW registered:", reg))
-            .catch((err) => console.log("SW registration failed:", err));
+            .then((reg) => console.log("SW registrado com sucesso:", reg))
+            .catch((err) => console.log("Falha no registro do SW:", err));
         });
       }
     </script>
