@@ -225,16 +225,57 @@ self.addEventListener("notificationclick", (event) => {
 // ============================================================================
 // ATUALIZAÇÃO AUTOMÁTICA DO SERVICE WORKER
 // ============================================================================
-// Mensagens entre a página e o SW podem ser usadas para forçar a atualização.
-// Aqui, se a página enviar { type: "SKIP_WAITING" }, o novo SW assume o controle.
+// Motivação:
+// - O Service Worker não pode ouvir 'controllerchange' (evento inexistente aqui).
+// - Quem ouve esse evento é o navigator.serviceWorker da página principal.
+//
+// Estratégia de atualização:
+// 1. O SW pode receber do cliente a mensagem { type: "SKIP_WAITING" } para
+//    assumir o controle imediatamente (útil em testes ou UX de "nova versão").
+// 2. Quando o SW assume o controle (após skipWaiting ou automaticamente),
+//    ele envia uma mensagem de volta para as páginas ativas, sugerindo recarga.
+// 3. A página escuta mensagens do SW e recarrega suavemente.
+
+// ===== No Service Worker (sw.js) =====
+// Recebe comando do cliente para pular a espera.
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
+    console.log("[SW] Forçando skipWaiting via mensagem.");
     self.skipWaiting();
   }
 });
 
-// Quando um novo SW assume o controle, o evento 'controllerchange' é disparado.
-// Pode ser usado na página para sugerir uma recarga.
-self.addEventListener("controllerchange", () => {
-  // O cliente (página) pode ouvir e recarregar, se desejar.
+// Quando o SW é ativado (nova versão), avisa todos os clientes.
+self.addEventListener("activate", (event) => {
+  // O claim() já é chamado no evento activate original.
+  // Vamos aproveitar para notificar os clientes sobre a nova versão.
+  event.waitUntil(
+    self.clients.matchAll({ type: "window" }).then((clients) => {
+      clients.forEach((client) => {
+        client.postMessage({
+          type: "SW_UPDATED",
+          version: CACHE_NAME
+        });
+      });
+    })
+  );
 });
+
+// ============================================================
+// ===== Na página principal (ex.: app.js ou main.js) =====
+// ============================================================
+// Código de exemplo para o cliente reagir à atualização:
+//
+// navigator.serviceWorker.addEventListener("message", (event) => {
+//   if (event.data && event.data.type === "SW_UPDATED") {
+//     console.log("Nova versão disponível! Recarregando...");
+//     // Recarrega a página para usar a nova versão.
+//     // window.location.reload();
+//
+//     // Ou mostra um aviso elegante ao usuário:
+//     // if (confirm("Atualização disponível. Recarregar?")) window.location.reload();
+//   }
+// });
+//
+// OBS: O evento 'controllerchange' também pode ser ouvido na página como sinal
+// de que um novo SW assumiu, mas o melhor é usar a mensagem acima.
