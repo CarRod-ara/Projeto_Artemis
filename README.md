@@ -73,23 +73,25 @@ O Luminar é um **PWA offline‑first** desenvolvido para vendedores de rua (bri
 
 ---
 
-## 📂 Estrutura de Arquivos (V1.0)
-artemis-pwa/
-├── index.html # Página principal (SPA)
-├── manifest.json # Configuração PWA
-├── sw.js # Service Worker (cache e offline)
-├── README.md # Este documento
-├── icons/ # Ícones do app
-│ ├── icon.svg
-│ ├── icon-192x192.png
-│ └── icon-512x512.png
-└── js/
-├── app.js # Controlador principal (monolítico – será modularizado na V2)
-├── db.js # Gerenciador do IndexedDB
-├── weather.js # Clima e geolocalização
-├── mixEngine.js # Motor de sugestão de mix
-├── health-check.js # Diagnóstico automático (console)
-└── utils.js # Funções auxiliares (escapeHtml, safeNumber, etc.)
+## 📁 Estrutura do Projeto
+
+- **`index.html`** – Página principal (SPA)
+- **`manifest.json`** – Configuração PWA
+- **`sw.js`** – Service Worker (cache e offline)
+- **`README.md`** – Este documento
+- **`icons/`** – Ícones do app
+  - `icon.svg`
+  - `icon-192x192.png`
+  - `icon-512x512.png`
+- **`js/`** – Scripts da aplicação
+  - **`app.js`** – Controlador principal *(monolítico – será modularizado na V2)*
+  - **`db.js`** – Gerenciador do IndexedDB
+  - **`weather.js`** – Clima e geolocalização (Open-Meteo)
+  - **`mixEngine.js`** – Motor de sugestão de mix de produtos
+  - **`health-check.js`** – Diagnóstico automático no console
+  - **`utils.js`** – Funções auxiliares (`escapeHtml`, `safeNumber`, etc.)
+
+
 
 ---
 
